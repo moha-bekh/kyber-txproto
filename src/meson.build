@@ -32,6 +32,7 @@ sources = [
     'fifo_packet.c',
     'os_compat.c',
     'ctrl_template.c',
+    'net.c',
     'epoch.c',
     'commit.c',
     'control.c',
@@ -184,7 +185,13 @@ link_args = []
 
 if host_machine.system() == 'windows'
     link_args += ['-static-libgcc', '-Wl,-Bstatic', '-lpthread', '-Wl,-Bdynamic']
+
+    lib_ws2_32 = cc.find_library('ws2_32', required: true)
+    dependencies += lib_ws2_32
 endif
+
+conf.set('HAVE_SOCK_CLOEXEC', host_machine.system() != 'windows' and
+                              cc.has_header_symbol('sys/socket.h', 'SOCK_CLOEXEC'))
 
 inc = include_directories('./include')
 lib = library('txproto', sources,

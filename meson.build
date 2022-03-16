@@ -35,6 +35,12 @@ build_opts = [
     '-Werror=implicit-function-declaration',
 ]
 
+if host_machine.system() == 'windows'
+    winver = '0x0601' # Windows 7
+    build_opts += '-D_WIN32_WINNT=' + winver
+    build_opts += '-DWINVER=' + winver
+endif
+
 # Required dependencies
 threads_dep = dependency('threads')
 dependencies = [
