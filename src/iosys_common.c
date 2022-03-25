@@ -79,6 +79,10 @@ extern const IOSysAPI src_xcb;
 extern const IOSysAPI src_wayland;
 #endif
 
+#ifdef HAVE_DXGI
+extern const IOSysAPI src_dxgi;
+#endif
+
 const IOSysAPI *sp_compiled_apis[] = {
 #ifdef HAVE_LAVD
     &src_lavd,
@@ -91,6 +95,9 @@ const IOSysAPI *sp_compiled_apis[] = {
 #endif
 #ifdef HAVE_XCB
     &src_xcb,
+#endif
+#ifdef HAVE_DXGI
+    &src_dxgi,
 #endif
 };
 

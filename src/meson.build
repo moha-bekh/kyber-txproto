@@ -156,6 +156,17 @@ if have_wayland
     endif
 endif
 
+# DXGI
+lib_d3d11 = cc.find_library('d3d11', required: false)
+lib_dxgi = cc.find_library('dxgi', required: false)
+have_dxgi = lib_d3d11.found() and lib_dxgi.found()
+if have_dxgi
+    dependencies += lib_d3d11
+    dependencies += lib_dxgi
+    sources += 'iosys_dxgi.c'
+    conf.set('HAVE_DXGI', 1)
+endif
+
 link_args = []
 
 if host_machine.system() == 'windows'
@@ -221,6 +232,7 @@ summary({
     'pulse': libpulse.found(),
     'xcb': have_xcb,
     'wayland': have_wayland,
+    'dxgi': have_dxgi,
     'libavdevice': libavdevice.found(),
 }, section: 'I/O systems', bool_yn: true)
 
