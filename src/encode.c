@@ -64,6 +64,17 @@ static int swr_configure(EncodingContext *ctx, AVFrame *conf)
     return 0;
 }
 
+static int codec_supports_format(const AVCodec *codec, enum AVPixelFormat pix_fmt)
+{
+    for (int i = 0; codec->pix_fmts[i] != AV_PIX_FMT_NONE; i++) {
+        if (codec->pix_fmts[i] == pix_fmt) {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
 static int init_avctx(EncodingContext *ctx, AVFrame *conf)
 {
     FormatExtraData *fe = (FormatExtraData *)conf->opaque_ref->data;
@@ -102,7 +113,9 @@ static int init_avctx(EncodingContext *ctx, AVFrame *conf)
             ctx->avctx->pix_fmt = ctx->pix_fmt;
         } else {
             const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(ctx->avctx->pix_fmt);
-            if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL) {
+            if ((desc->flags & AV_PIX_FMT_FLAG_HWACCEL) &&
+                !codec_supports_format(ctx->codec, ctx->avctx->pix_fmt)) {
+
                 AVBufferRef *input_frames_ref = conf->hw_frames_ctx;
                 AVHWFramesContext *hwfc = (AVHWFramesContext *)input_frames_ref->data;
                 ctx->avctx->pix_fmt = hwfc->sw_format;
@@ -150,6 +163,13 @@ static int init_hwcontext(EncodingContext *ctx, AVFrame *conf)
     AVBufferRef *input_device_ref = NULL;
     AVBufferRef *input_frames_ref = conf->hw_frames_ctx;
     AVBufferRef *enc_device_ref   = NULL;
+
+    /* If encoder accepts source format, just reuse its hw_frames_ctx */
+    if (input_frames_ref && ctx->avctx->pix_fmt == conf->format) {
+        ctx->avctx->hw_frames_ctx = av_buffer_ref(conf->hw_frames_ctx);
+        ctx->enc_frames_ref = av_buffer_ref(conf->hw_frames_ctx);
+        return 0;
+    }
 
     const AVCodecHWConfig *hwcfg = get_codec_hw_config(ctx);
     if (!hwcfg)
