@@ -83,10 +83,11 @@ extern const IOSysAPI src_wayland;
 extern const IOSysAPI src_dxgi;
 #endif
 
-const IOSysAPI *sp_compiled_apis[] = {
-#ifdef HAVE_LAVD
-    &src_lavd,
+#ifdef HAVE_WASAPI
+extern const IOSysAPI src_wasapi;
 #endif
+
+const IOSysAPI *sp_compiled_apis[] = {
 #ifdef HAVE_PULSEAUDIO
     &src_pulse,
 #endif
@@ -98,6 +99,9 @@ const IOSysAPI *sp_compiled_apis[] = {
 #endif
 #ifdef HAVE_DXGI
     &src_dxgi,
+#endif
+#ifdef HAVE_WASAPI
+    &src_wasapi,
 #endif
 };
 

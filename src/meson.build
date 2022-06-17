@@ -169,6 +169,17 @@ if have_dxgi
     conf.set('HAVE_DXGI', 1)
 endif
 
+# WASAPI
+lib_ole32 = cc.find_library('ole32', required: false)
+lib_ksuser = cc.find_library('ksuser', required: false)
+have_wasapi = lib_ole32.found() and lib_ksuser.found()
+if have_wasapi
+    dependencies += lib_ole32
+    dependencies += lib_ksuser
+    sources += 'iosys_wasapi.c'
+    conf.set('HAVE_WASAPI', 1)
+endif
+
 link_args = []
 
 if host_machine.system() == 'windows'
@@ -235,6 +246,7 @@ summary({
     'xcb': have_xcb,
     'wayland': have_wayland,
     'dxgi': have_dxgi,
+    'wasapi': have_wasapi,
     'libavdevice': libavdevice.found(),
 }, section: 'I/O systems', bool_yn: true)
 
