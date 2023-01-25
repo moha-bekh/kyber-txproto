@@ -35,6 +35,8 @@
 
 #include <libtxproto/txproto_main.h>
 
+#include "net.h"
+
 #ifdef HAVE_LIBEDIT
 #include "cli.h"
 #endif
@@ -131,7 +133,14 @@ int main(int argc, char *argv[])
     if ((err = sp_log_init(SP_LOG_INFO)) < 0)
         return err;
 
+    if (!net_init()) {
+        sp_log_uninit();
+        av_free(ctx);
+        return 1;
+    }
+
     if ((err = sp_class_alloc(ctx, "tx", SP_TYPE_NONE, NULL)) < 0) {
+        net_cleanup();
         sp_log_uninit();
         av_free(ctx);
         return err;
@@ -375,6 +384,8 @@ end:
                err == AVERROR(ENOMEM) ? ": out of memory" : "");
 
     cleanup_fn(ctx);
+
+    net_cleanup();
 
     return err == AVERROR_EXIT ? 0 : err;
 }
