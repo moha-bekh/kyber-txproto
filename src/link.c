@@ -24,6 +24,7 @@
 #include <libtxproto/filter.h>
 #include <libtxproto/link.h>
 #include <libtxproto/mux.h>
+#include "packet_sink.h"
 
 #include "iosys_common.h"
 #ifdef HAVE_INTERFACE
@@ -90,6 +91,8 @@ static SPBufferList *sp_ctx_get_events_list(void *ctx)
         return ((IOSysEntry *)ctx)->events;
     case SP_TYPE_MUXER:
         return ((MuxingContext *)ctx)->events;
+    case SP_TYPE_PACKET_SINK:
+        return ((PacketSinkContext *)ctx)->events;
     case SP_TYPE_FILTER:
         return ((FilterContext *)ctx)->events;
     case SP_TYPE_ENCODER:
@@ -124,6 +127,8 @@ static AVBufferRef *sp_ctx_get_fifo(void *ctx, int out)
     case SP_TYPE_MUXER:
         sp_assert(!out);
         return ((MuxingContext *)ctx)->src_packets;
+    case SP_TYPE_PACKET_SINK:
+        return ((PacketSinkContext *)ctx)->src_packets;
     case SP_TYPE_FILTER:
         return NULL;
     case SP_TYPE_ENCODER:
@@ -203,6 +208,16 @@ static int link_fn(AVBufferRef *event_ref, void *callback_ctx, void *dst_ctx,
             return err;
 
         return sp_packet_fifo_mirror(dst_fifo, src_fifo);
+    } else if ((s_type == SP_TYPE_ENCODER) && (d_type == SP_TYPE_PACKET_SINK)) {
+        sp_assert(dst_fifo && src_fifo);
+
+        EncodingContext *src_enc_ctx = src_ctx;
+        PacketSinkContext *packet_sink = dst_ctx;
+        int err = sp_packet_sink_set_encoding_ctx(packet_sink, src_enc_ctx);
+        if (err)
+            return err;
+
+        return sp_frame_fifo_mirror(dst_fifo, src_fifo);
     } else if ((s_type == SP_TYPE_DEMUXER) && (d_type == SP_TYPE_DECODER)) {
         DemuxingContext *src_mux_ctx = src_ctx;
         DecodingContext *dst_dec_ctx = dst_ctx;
@@ -302,6 +317,15 @@ int sp_generic_link(TXMainContext *ctx,
         int mux_needs_global = dst_mux_ctx->avf->oformat->flags & AVFMT_GLOBALHEADER;
 
         err = encoder_mode_negotiate(src_ref, mux_needs_global);
+        if (err != AVERROR(EINVAL) && err < 0)
+            return err;
+    } else if (EITHER(obj1, obj2, SP_TYPE_ENCODER, SP_TYPE_PACKET_SINK)) {
+        src_ref = PICK_REF(obj1, obj2, SP_TYPE_ENCODER);
+        dst_ref = PICK_REF(obj1, obj2, SP_TYPE_PACKET_SINK);
+        src_ctrl_fn = sp_encoder_ctrl;
+        dst_ctrl_fn = sp_packet_sink_ctrl;
+
+        err = encoder_mode_negotiate(src_ref, 0);
         if (err != AVERROR(EINVAL) && err < 0)
             return err;
     } else if (EITHER(obj1, obj2, SP_TYPE_ENCODER, SP_TYPE_VIDEO_SOURCE) ||

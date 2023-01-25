@@ -220,6 +220,8 @@ static inline const char *type_to_string(enum SPType type)
     case SP_TYPE_MUXER:        return "muxer";
     case SP_TYPE_DEMUXER:      return "demuxer";
 
+    case SP_TYPE_PACKET_SINK:  return "packet_sink";
+
     /* zalgofied because this should never happen */
     default: break;
     }

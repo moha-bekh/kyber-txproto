@@ -24,6 +24,9 @@ sources = [
     # Decoding
     'decode.c',
 
+    # Packet sink
+    'packet_sink.c',
+
     # Misc
     'utils.c',
     'log.c',

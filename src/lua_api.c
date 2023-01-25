@@ -40,6 +40,7 @@
 #include "interface_common.h"
 #endif
 
+#include "packet_sink.h"
 #include "lua_generic_api.h"
 #include "lua_api_utils.h"
 
@@ -354,6 +355,9 @@ static int lua_generic_schedule(lua_State *L)
     case SP_TYPE_MUXER:
         fn = sp_muxer_ctrl;
         break;
+    case SP_TYPE_PACKET_SINK:
+        fn = sp_packet_sink_ctrl;
+        break;
     case SP_TYPE_FILTER:
         fn = sp_filter_ctrl;
         break;
@@ -595,6 +599,41 @@ static int lua_create_demuxer(lua_State *L)
     sp_bufferlist_append_noref(ctx->ext_buf_refs, mctx_ref);
 
     void *contexts[] = { ctx, mctx_ref };
+    static const struct luaL_Reg lua_fns[] = {
+        { "ctrl", sp_lua_generic_ctrl },
+        { "schedule", lua_generic_schedule },
+        { "link", sp_lua_generic_link },
+        { "destroy", lua_generic_destroy },
+        { NULL, NULL },
+    };
+
+    LUA_PUSH_CONTEXTED_INTERFACE(L, lua_fns, contexts);
+
+    return 1;
+}
+
+static int lua_create_packet_sink(lua_State *L)
+{
+    int err;
+    TXMainContext *ctx = lua_touserdata(L, lua_upvalueindex(1));
+
+    LUA_CLEANUP_FN_DEFS(sp_class_get_name(ctx), "create_packet_sink")
+    LUA_INTERFACE_BOILERPLATE();
+
+    AVBufferRef *psctx_ref = sp_packet_sink_alloc();
+    PacketSinkContext *psctx = (PacketSinkContext *) psctx_ref->data;
+
+    LUA_SET_CLEANUP(psctx_ref);
+
+    GET_OPT_STR(psctx->uri, "uri");
+
+    err = sp_packet_sink_init(psctx_ref);
+    if (err < 0)
+        LUA_ERROR("Unable to init packet sink: %s!", av_err2str(err));
+
+    sp_bufferlist_append_noref(ctx->ext_buf_refs, psctx_ref);
+
+    void *contexts[] = { ctx, psctx_ref };
     static const struct luaL_Reg lua_fns[] = {
         { "ctrl", sp_lua_generic_ctrl },
         { "schedule", lua_generic_schedule },
@@ -1544,6 +1583,7 @@ const struct luaL_Reg sp_lua_lib_fns[] = {
     { "create_io", lua_create_io },
     { "create_muxer", lua_create_muxer },
     { "create_demuxer", lua_create_demuxer },
+    { "create_packet_sink", lua_create_packet_sink },
     { "create_encoder", lua_create_encoder },
     { "create_decoder", lua_create_decoder },
     { "create_filter", lua_create_filter },

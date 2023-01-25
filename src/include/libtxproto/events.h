@@ -63,6 +63,7 @@ typedef enum SPEventType {
     SP_EVENT_TYPE_DECODER    = (1ULL << 22),
     SP_EVENT_TYPE_MUXER      = (1ULL << 23),
     SP_EVENT_TYPE_DEMUXER    = (1ULL << 24),
+    SP_EVENT_TYPE_PACKET_SINK = (1ULL << 25),
     SP_EVENT_TYPE_MASK       = (((1ULL << 16) - 1) << 16), /* 16 bits reserved for event type */
 
     /* [32: 47] - Controls - same as type, but at least either a type or a ctrl must be present */

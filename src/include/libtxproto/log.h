@@ -58,6 +58,8 @@ enum SPType {
     SP_TYPE_MUXER = (1 << 28),
     SP_TYPE_DEMUXER = (1 << 29),
     SP_TYPE_MUXING = SP_TYPE_MUXER | SP_TYPE_DEMUXER,
+
+    SP_TYPE_PACKET_SINK = (1 << 30),
 };
 
 enum SPLogLevel {

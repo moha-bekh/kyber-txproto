@@ -30,6 +30,7 @@
 #include <libtxproto/decode.h>
 #include <libtxproto/mux.h>
 #include <libtxproto/filter.h>
+#include "packet_sink.h"
 
 ctrl_fn sp_get_ctrl_fn(void *ctx)
 {
@@ -43,6 +44,8 @@ ctrl_fn sp_get_ctrl_fn(void *ctx)
         return sp_decoder_ctrl;
     case SP_TYPE_DEMUXER:
         return sp_demuxer_ctrl;
+    case SP_TYPE_PACKET_SINK:
+        return sp_packet_sink_ctrl;
     case SP_TYPE_FILTER:
         return sp_filter_ctrl;
 #ifdef HAVE_INTERFACE

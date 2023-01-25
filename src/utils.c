@@ -879,6 +879,7 @@ char *sp_event_flags_to_str(SPEventType flags)
     COND(SP_EVENT_TYPE_BSF,        type, "bsf")
     COND(SP_EVENT_TYPE_ENCODER,    type, "encoder")
     COND(SP_EVENT_TYPE_MUXER,      type, "muxer")
+    COND(SP_EVENT_TYPE_PACKET_SINK, type, "packet_sink")
     COND(SP_EVENT_TYPE_DEMUXER,    type, "demuxer")
     COND(SP_EVENT_TYPE_DECODER,    type, "decoder")
     COND(SP_EVENT_TYPE_SINK,       type, "sink")
@@ -1045,6 +1046,8 @@ SPEventType sp_class_to_event_type(void *ctx)
     case SP_TYPE_DEMUXER:
         return SP_EVENT_TYPE_DEMUXER;
 
+    case SP_TYPE_PACKET_SINK:
+        return SP_EVENT_TYPE_PACKET_SINK;
 
     default:
         return 0x0;

@@ -93,6 +93,8 @@ int tx_link(TXMainContext *ctx, AVBufferRef *src, AVBufferRef *dst,
 int tx_filtergraph_command(TXMainContext *ctx, AVBufferRef *graph,
                            const char *filter_target, AVDictionary *commands);
 
+AVBufferRef *tx_packetsink_create(TXMainContext *ctx, const char *uri);
+
 int tx_destroy(TXMainContext *ctx, AVBufferRef **ref);
 
 int tx_event_register(TXMainContext *ctx, AVBufferRef *target,
