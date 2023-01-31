@@ -224,7 +224,7 @@ static inline const char *type_to_string(enum SPType type)
     default: break;
     }
 
-    return "û̴̼n̷̡̎̄k̸͍̓͒ṅ̵̨̅ò̷̢̏w̷̙͍͌n̸̩̦̅";
+    return "unknown";
 }
 
 static const char *lvl_to_str(enum SPLogLevel lvl)
