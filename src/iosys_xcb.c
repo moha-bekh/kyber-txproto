@@ -243,10 +243,18 @@ static void *xcb_thread(void *s)
                    xerr->sequence, xerr->resource_id,
                    xerr->minor_code, xerr->major_code);
 
+            uint8_t error_code = xerr->error_code;
             free(xerr);
             av_frame_free(&frame);
-            err = AVERROR(EACCES);
-            goto end;
+
+            if (error_code == 8 /* BadMatch */) {
+                free(geo_r);
+                geo_c = xcb_get_geometry(ctx->con, priv->win);
+                continue;
+            } else {
+                err = AVERROR(EACCES);
+                goto end;
+            }
         }
 
         free(img_r);
