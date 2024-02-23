@@ -102,6 +102,7 @@ int tx_event_destroy(TXMainContext *ctx, AVBufferRef *event);
 
 AVBufferRef *tx_io_register_cb(TXMainContext *ctx, const char **api_list,
                                int (*source_event_cb)(IOSysEntry *entry, void *userdata),
+                               void (*source_event_free)(void *userdata),
                                void *userdata);
 
 AVBufferRef *tx_io_create(TXMainContext *ctx, uint32_t identifier,

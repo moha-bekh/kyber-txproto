@@ -425,8 +425,17 @@ int tx_event_register(TXMainContext *ctx, AVBufferRef *target,
 
 typedef struct SourceEventCtx {
     int (*cb)(IOSysEntry *entry, void *userdata);
+    void (*free)(void *userdata);
     void *userdata;
 } SourceEventCtx;
+
+int tx_event_destroy(TXMainContext *ctx, AVBufferRef *event)
+{
+    (void)sp_bufferlist_pop(ctx->ext_buf_refs, sp_bufferlist_find_fn_data, event);
+    sp_event_unref_expire(&event);
+
+    return 0;
+}
 
 static int source_event_cb(AVBufferRef *event, void *callback_ctx, void *ctx,
                            void *dep_ctx, void *data)
@@ -437,26 +446,28 @@ static int source_event_cb(AVBufferRef *event, void *callback_ctx, void *ctx,
     return (*source_cb_ctx->cb)(entry, source_cb_ctx->userdata);
 }
 
-int tx_event_destroy(TXMainContext *ctx, AVBufferRef *event)
+static void source_free_cb(void *callback_ctx, void *ctx, void *dep_ctx)
 {
-    (void)sp_bufferlist_pop(ctx->ext_buf_refs, sp_bufferlist_find_fn_data, event);
-    sp_event_unref_expire(&event);
+    SourceEventCtx *source_cb_ctx = callback_ctx;
 
-    return 0;
+    if (source_cb_ctx->free)
+        (*source_cb_ctx->free)(source_cb_ctx->userdata);
 }
 
 AVBufferRef *tx_io_register_cb(TXMainContext *ctx, const char **api_list,
                                int (*cb)(IOSysEntry *entry, void *userdata),
+                               void (*free_cb)(void *userdata),
                                void *userdata)
 {
     AVBufferRef *source_event;
     source_event = sp_io_alloc(ctx, (const char **)api_list, source_event_cb,
-                               NULL, sizeof(SourceEventCtx));
+                               source_free_cb, sizeof(SourceEventCtx));
     if (!source_event)
         return NULL;
 
     SourceEventCtx *source_event_ctx = av_buffer_get_opaque(source_event);
     source_event_ctx->cb = cb;
+    source_event_ctx->free = free_cb;
     source_event_ctx->userdata = userdata;
 
     int err = sp_io_init(ctx, source_event, (const char **)api_list);
