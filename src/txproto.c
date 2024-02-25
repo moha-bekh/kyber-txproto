@@ -16,6 +16,8 @@
 #include <libtxproto/txproto.h>
 #include "iosys_common.h"
 
+#include "net.h"
+
 TXMainContext *tx_new(void)
 {
     TXMainContext *ctx = av_mallocz(sizeof(*ctx));
@@ -28,6 +30,12 @@ int tx_init(TXMainContext *ctx)
 
     if ((err = sp_log_init(SP_LOG_INFO)) < 0)
         return err;
+
+    if (!net_init()) {
+        sp_log_uninit();
+        av_free(ctx);
+        return 1;
+    }
 
     if ((err = sp_class_alloc(ctx, "tx", SP_TYPE_NONE, NULL)) < 0) {
         sp_log_uninit();
@@ -76,6 +84,8 @@ void tx_free(TXMainContext *ctx)
     /* Free any auxiliary data */
     sp_class_free(ctx);
     av_free(ctx);
+
+    net_cleanup();
 }
 
 void tx_set_log_cb(tx_log_cb log_cb, void *userdata)
