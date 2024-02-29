@@ -347,6 +347,10 @@ static void *wasapi_capture_thread(void *s)
     IOSysEntry *entry = s;
     WasapiCapture *priv = entry->io_priv;
     WasapiCtx *ctx = entry->api_priv;
+    IAudioClient *client = NULL;
+    IAudioCaptureClient *capture = NULL;
+    WAVEFORMATEX *pwf = NULL;
+    HANDLE event = NULL;
     HRESULT hr;
     int ret;
 
@@ -357,30 +361,29 @@ static void *wasapi_capture_thread(void *s)
     IMMDevice *dev = find_device(ctx, entry->identifier);
     if (!dev) {
         sp_log(ctx, SP_LOG_ERROR, "Requested device hasn't been found\n");
-        return NULL;
+        ret = AVERROR_EXTERNAL;
+        goto error;
     }
 
     /* Open device and fetch the missing parts of its audio format */
-    IAudioClient *client = NULL;
-    IAudioCaptureClient *capture = NULL;
-    WAVEFORMATEX *pwf = NULL;
-    HANDLE event = NULL;
-
     hr = IMMDevice_Activate(dev, &IID_IAudioClient, CLSCTX_ALL, NULL, (LPVOID *) &client);
     IMMDevice_Release(dev);
     if (hr != S_OK) {
         sp_log(ctx, SP_LOG_ERROR, "Failed to activate device: %lX\n", hr);
-        return NULL;
+        ret = AVERROR_EXTERNAL;
+        goto error;
     }
 
     hr = IAudioClient_GetMixFormat(client, &pwf);
     if (hr != S_OK) {
         sp_log(ctx, SP_LOG_ERROR, "Failed to get mix format: %lX\n", hr);
+        ret = AVERROR_EXTERNAL;
         goto error;
     }
 
     if (pwf->wFormatTag != WAVE_FORMAT_EXTENSIBLE) {
         sp_log(ctx, SP_LOG_ERROR, "Only WAVE_FORMAT_EXTENSIBLE is supported");
+        ret = AVERROR_EXTERNAL;
         goto error;
     }
 
@@ -427,12 +430,14 @@ static void *wasapi_capture_thread(void *s)
     event = CreateEvent(NULL, FALSE, FALSE, NULL);
     if (!event) {
         sp_log(ctx, SP_LOG_ERROR, "CreateEvent() failed: %lX\n", GetLastError());
+        ret = AVERROR_EXTERNAL;
         goto error;
     }
 
     hr = IAudioClient_SetEventHandle(client, event);
     if (hr != S_OK) {
         sp_log(ctx, SP_LOG_ERROR, "SetEventHandle() failed: %lX\n", hr);
+        ret = AVERROR_EXTERNAL;
         goto error;
     }
 
@@ -440,12 +445,14 @@ static void *wasapi_capture_thread(void *s)
     hr = IAudioClient_GetService(client, &IID_IAudioCaptureClient, (LPVOID *) &capture);
     if (hr != S_OK) {
         sp_log(ctx, SP_LOG_ERROR, "Failed to get CaptureClient: %lX\n", hr);
+        ret = AVERROR_EXTERNAL;
         goto error;
     }
 
     hr = IAudioClient_Start(client);
     if (hr != S_OK) {
         sp_log(ctx, SP_LOG_ERROR, "Failed to start capture: %lX\n", hr);
+        ret = AVERROR_EXTERNAL;
         goto error;
     }
 
