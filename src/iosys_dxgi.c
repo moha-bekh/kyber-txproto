@@ -861,6 +861,10 @@ fail:
         IDXGIOutput1_Release(dxgi_output);
 
     priv->err = err;
+
+    if (err < 0)
+        sp_eventlist_dispatch(entry, entry->events, SP_EVENT_ON_ERROR, NULL);
+
     return NULL;
 }
 
