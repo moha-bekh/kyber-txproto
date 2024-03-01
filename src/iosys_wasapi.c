@@ -476,6 +476,9 @@ error:
     if (client)
         IAudioClient_Release(client);
 
+    if (ret < 0)
+        sp_eventlist_dispatch(entry, entry->events, SP_EVENT_ON_ERROR, NULL);
+
     return NULL;
 }
 
