@@ -226,7 +226,7 @@ sp_packet_sink_alloc(void) {
 
     pthread_mutex_init(&ctx->lock, NULL);
     ctx->src_packets =
-        sp_packet_fifo_create(ctx, 256, PACKET_FIFO_BLOCK_NO_INPUT);
+        sp_packet_fifo_create(ctx, 60, PACKET_FIFO_BLOCK_NO_INPUT | PACKET_FIFO_BLOCK_MAX_OUTPUT);
     if (!ctx->src_packets)
         goto error;
 
