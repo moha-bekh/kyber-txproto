@@ -174,13 +174,13 @@ packet_sink_thread(void *arg) {
         AV_WB32(header + 8, in_pkt->size);
 
         int w = net_send_all(ctx->socket, header, sizeof(header));
-        if (w == -1) {
+        if (w != sizeof(header)) {
             sp_log(ctx, SP_LOG_ERROR, "Could not write to socket");
             goto end;
         }
 
         w = net_send_all(ctx->socket, in_pkt->data, in_pkt->size);
-        if (w == -1) {
+        if (w != in_pkt->size) {
             sp_log(ctx, SP_LOG_ERROR, "Could not write to socket");
             goto end;
         }
