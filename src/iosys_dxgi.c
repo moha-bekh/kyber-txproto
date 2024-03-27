@@ -560,6 +560,11 @@ static int allocate_texture_pool(DxgiCapture *priv, ID3D11Device* device, int wi
     hw_frames_ctx_cfg->height = height;
     hw_frames_ctx_cfg->initial_pool_size = 6;
 
+    /* Required for AMF */
+    AVD3D11VAFramesContext *d3d11_frames_ctx = (AVD3D11VAFramesContext *)hw_frames_ctx_cfg->hwctx;
+    d3d11_frames_ctx->BindFlags |= D3D11_BIND_SHADER_RESOURCE;
+    d3d11_frames_ctx->BindFlags |= D3D11_BIND_RENDER_TARGET;
+
     err = av_hwframe_ctx_init(priv->hw_frames_ctx);
     if (err < 0) {
         goto fail;
