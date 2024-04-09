@@ -45,6 +45,8 @@ static int send_config(PacketSinkContext *ctx,
 {
     unsigned char header[12];
 
+    sp_log(ctx, SP_LOG_INFO, "Send config packet\n");
+
     uint32_t kymux_codec = get_kymux_codec(ctx->enc->codec->id);
     if (!kymux_codec)
         return -1;
