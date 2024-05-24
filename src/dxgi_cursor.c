@@ -18,11 +18,14 @@
 
 #define COBJMACROS
 
+#include <stdio.h>
+#include <stdatomic.h>
 #include <pthread.h>
 
 #include <libavutil/error.h>
 #include <libavutil/intreadwrite.h>
 #include <libavutil/mem.h>
+#include <libavutil/time.h>
 
 #include <libtxproto/fifo_bufferref.h>
 #include <libtxproto/log.h>
@@ -56,18 +59,19 @@ typedef struct ArgbCursor {
 
 struct DxgiCursorHandler {
     SPClass *class;
+
     uint32_t identifier;
 
     /* Worker thread */
     AVBufferRef *fifo;
     HANDLE fifo_event;
     pthread_t sender_thread;
+    atomic_int quit;
 
     /* Pipe handle and connection state */
     HANDLE pipe_handle;
     HANDLE completion_event;
     OVERLAPPED overlapped;
-    int connected;
 
     /* Cursor state */
     uint8_t visible;
@@ -366,19 +370,16 @@ static int close_pipe(DxgiCursorHandler *ctx)
     return 0;
 }
 
-static int create_pipe(DxgiCursorHandler *ctx)
+static int open_pipe(DxgiCursorHandler *ctx)
 {
-    BOOL err;
-
-    ctx->pipe_handle = CreateNamedPipe(
-        TEXT("\\\\.\\pipe\\TxprotoCursorPipe"),
-        PIPE_ACCESS_OUTBOUND | FILE_FLAG_OVERLAPPED,
-        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE,
-        1,
-        4096 * 8, /* 4096 is the average cursor size */
+    ctx->pipe_handle = CreateFile(
+        TEXT("\\\\.\\pipe\\KyberInputServer"),
+        GENERIC_WRITE,
         0,
-        NMPWAIT_USE_DEFAULT_WAIT,
-        NULL);
+        NULL,
+        OPEN_EXISTING,
+        FILE_FLAG_OVERLAPPED | FILE_FLAG_NO_BUFFERING,
+        0);
     if (ctx->pipe_handle == INVALID_HANDLE_VALUE) {
         return AVERROR_EXTERNAL;
     }
@@ -389,12 +390,6 @@ static int create_pipe(DxgiCursorHandler *ctx)
     }
 
     ctx->overlapped.hEvent = ctx->completion_event;
-
-    err = ConnectNamedPipe(ctx->pipe_handle, &ctx->overlapped);
-    if (err == FALSE && GetLastError() != ERROR_IO_PENDING) {
-        sp_log(ctx, SP_LOG_ERROR, "ConnectNamedPipe(): %ld\n", GetLastError());
-        goto fail;
-    }
 
     return 0;
 
@@ -456,84 +451,120 @@ static int handle_cursor(DxgiCursorHandler *ctx, DxgiCursor *handle)
     return updated;
 }
 
+static int process_pending_cursors(DxgiCursorHandler *ctx)
+{
+    AVBufferRef *ref;
+    int updated = 0;
+
+    while ((ref = sp_bufferref_fifo_pop(ctx->fifo))) {
+        DxgiCursor *handle = (DxgiCursor *)ref->data;
+        updated |= handle_cursor(ctx, handle);
+        av_buffer_unref(&ref);
+    }
+
+    return updated;
+}
+
+static int handle_cursor_received(DxgiCursorHandler *ctx)
+{
+    int updated = process_pending_cursors(ctx);
+    if (updated) {
+        int err = send_cursor(ctx);
+        if (err < 0) {
+            return err;
+        }
+    }
+
+    return 0;
+}
+
+static int handle_connecting(DxgiCursorHandler *ctx)
+{
+    int err = open_pipe(ctx);
+    if (err < 0) {
+        return AVERROR_EXTERNAL;
+    }
+
+    while (!atomic_load(&ctx->quit)) {
+        DWORD ret = WaitForSingleObject(ctx->completion_event, 100);
+        switch (ret) {
+            case WAIT_OBJECT_0:
+                ResetEvent(ctx->fifo_event);
+                sp_log(ctx, SP_LOG_INFO, "NamedPipe connected for display %u\n", ctx->identifier);
+                break;
+
+            case WAIT_TIMEOUT:
+                process_pending_cursors(ctx);
+                break;
+
+            case WAIT_ABANDONED:
+            default:
+                close_pipe(ctx);
+                return AVERROR_EXTERNAL;
+        }
+
+
+        break;
+    }
+
+    return 0;
+}
+
+static int handle_connected(DxgiCursorHandler *ctx)
+{
+    while (!atomic_load(&ctx->quit)) {
+        DWORD wait_err = WaitForSingleObject(ctx->fifo_event, INFINITE);
+
+        switch (wait_err) {
+            case WAIT_OBJECT_0:
+                ResetEvent(ctx->fifo_event);
+
+                int err = handle_cursor_received(ctx);
+                if (err < 0) {
+                    return err;
+                }
+
+                break;
+
+            case WAIT_FAILED:
+                sp_log(ctx, SP_LOG_ERROR, "WaitForSingleObject() failed: %ld\n",
+                       GetLastError());
+                return AVERROR_EXTERNAL;
+
+            case WAIT_TIMEOUT:
+            case WAIT_ABANDONED:
+            default:
+                sp_log(ctx, SP_LOG_ERROR, "WaitForSingleObject() returned an unexpected value: %d\n", err);
+                break;
+        }
+    }
+
+    return 0;
+}
+
 static void *sender_thread(void *arg)
 {
     DxgiCursorHandler *ctx = arg;
-    AVBufferRef *ref;
-    int err;
+    int connected = 0;
+    int ret;
 
     sp_set_thread_name_self(sp_class_get_name(ctx));
 
-    err = create_pipe(ctx);
-    if (err < 0)
-        return NULL;
-
-    while (1) {
-        if (!ctx->connected) {
-            HANDLE handles[] = {
-                ctx->completion_event,
-                ctx->fifo_event
-            };
-
-            DWORD ret = WaitForMultipleObjects(SIZEOF_ARRAY(handles), handles, FALSE, 0);
-            if (ret == WAIT_TIMEOUT) {
-                continue;
-            } else if (ret == WAIT_OBJECT_0) {
-                sp_log(ctx, SP_LOG_TRACE, "Client connected\n");
-
-                ResetEvent(ctx->completion_event);
-                ctx->connected = 1;
-
-                err = send_cursor(ctx);
-                if (err < 0) {
-                    close_pipe(ctx);
-                    ctx->connected = 0;
-
-                    err = create_pipe(ctx);
-                    if (err < 0) {
-                        break;
-                    }
-                }
-
-            } else if (ret == WAIT_OBJECT_0 + 1) {
-                sp_log(ctx, SP_LOG_DEBUG, "Got cursor while client isn't connected\n");
-
-                ResetEvent(ctx->fifo_event);
-
-                ref = sp_bufferref_fifo_pop(ctx->fifo);
-                if (!ret)
-                    break;
-
-                DxgiCursor *handle = (DxgiCursor *)ref->data;
-                handle_cursor(ctx, handle);
-            } else {
-                sp_log(ctx, SP_LOG_ERROR, "WaitForMultipleObjects() failed: %ld\n",
-                       GetLastError());
+    while (!atomic_load(&ctx->quit)) {
+        if (!connected) {
+            ret = handle_connecting(ctx);
+            if (ret < 0) {
                 break;
             }
 
+            connected = 1;
         } else {
-            ref = sp_bufferref_fifo_pop(ctx->fifo);
-            if (!ref)
+            ret = handle_connected(ctx);
+            if (ret < 0) {
                 break;
-
-            DxgiCursor *handle = (DxgiCursor *)ref->data;
-
-            int send = handle_cursor(ctx, handle);
-            if (send) {
-                err = send_cursor(ctx);
-                if (err < 0) {
-                    close_pipe(ctx);
-                    ctx->connected = 0;
-
-                    err = create_pipe(ctx);
-                    if (err < 0) {
-                        break;
-                    }
-                }
             }
 
-            av_buffer_unref(&ref);
+            connected = 0;
         }
     }
 
@@ -548,12 +579,13 @@ int sp_dxgi_cursor_handler_init(DxgiCursorHandler **out_ctx, uint32_t identifier
 
     ctx->identifier = identifier;
     ctx->pipe_handle = INVALID_HANDLE_VALUE;
+    ctx->quit = ATOMIC_VAR_INIT(0);
 
     int err = sp_class_alloc(ctx, "dxgi_cursor", SP_TYPE_SCRIPT, NULL);
     if (err < 0)
         return err;
 
-    ctx->fifo = sp_bufferref_fifo_create(out_ctx, 16, BUFFERREF_FIFO_BLOCK_NO_INPUT);
+    ctx->fifo = sp_bufferref_fifo_create(out_ctx, 16, BUFFERREF_FIFO_PULL_NO_BLOCK);
     ctx->fifo_event = CreateEvent(NULL, TRUE, FALSE, NULL);
 
     pthread_create(&ctx->sender_thread, NULL, sender_thread, ctx);
@@ -570,7 +602,8 @@ void sp_dxgi_cursor_handler_uninit(DxgiCursorHandler **s)
 
     DxgiCursorHandler *ctx = *s;
 
-    sp_bufferref_fifo_push(ctx->fifo, NULL);
+    ctx->quit = ATOMIC_VAR_INIT(1);
+    SetEvent(ctx->fifo_event);
     pthread_join(ctx->sender_thread, NULL);
 
     argb_cursor_free(&ctx->cursor);
