@@ -21,6 +21,7 @@
 #include <pthread.h>
 
 #include <libavutil/error.h>
+#include <libavutil/intreadwrite.h>
 #include <libavutil/mem.h>
 
 #include <libtxproto/fifo_bufferref.h>
@@ -149,15 +150,33 @@ static int write_to_pipe(DxgiCursorHandler *ctx, const void *data, size_t size)
 
 static int send_cursor(DxgiCursorHandler *ctx, const POINT *position)
 {
+    size_t buffer_size;
     int err;
 
-    err = write_to_pipe(ctx, &ctx->identifier, sizeof(ctx->identifier));
-    if (err < 0)
-        return err;
+    /**
+     * Minimum size, when invisible, is:
+     * - Identifier (4)
+     * - Visible (1)
+     *
+     * Variable size, when visible, is:
+     * - Identifier (4)
+     * - Visible (1)
+     * - Position (2*4)
+     * - Dimensions (2*4)
+     * - Hotspot (2*4)
+     * - Bitmap size (4)
+     * - Bitmap (N)
+     */
+    if (ctx->visible) {
+        buffer_size = 33 + ctx->cursor.size * sizeof(uint32_t);
+    } else {
+        buffer_size = 5;
+    }
 
-    err = write_to_pipe(ctx, &ctx->visible, sizeof(ctx->visible));
-    if (err < 0)
-        return err;
+    uint8_t *buffer = av_malloc(buffer_size);
+
+    AV_WB32(buffer, ctx->identifier);
+    buffer[4] = ctx->visible;
 
     if (ctx->visible) {
         /**
@@ -166,43 +185,30 @@ static int send_cursor(DxgiCursorHandler *ctx, const POINT *position)
          * The position must actually be updated with the Hotspot.
          * Otherwise the cursor position has a small delta.
          */
-        uint32_t pos_array[] = {
-            position->x + ctx->cursor.xhot,
-            position->y + ctx->cursor.yhot,
-        };
-
-        err = write_to_pipe(ctx, pos_array, sizeof(pos_array));
-        if (err < 0)
-            return err;
+        AV_WB32(buffer + 5, position->x + ctx->cursor.xhot);
+        AV_WB32(buffer + 9, position->y + ctx->cursor.yhot);
 
         /* Hotspot */
-        err = write_to_pipe(ctx, &ctx->cursor.xhot, sizeof(ctx->cursor.xhot));
-        if (err < 0)
-            return err;
+        AV_WB32(buffer + 13, ctx->cursor.xhot);
+        AV_WB32(buffer + 17, ctx->cursor.yhot);
 
-        err = write_to_pipe(ctx, &ctx->cursor.yhot, sizeof(ctx->cursor.yhot));
-        if (err < 0)
-            return err;
+        /* Dimensions */
+        AV_WB32(buffer + 21, ctx->cursor.width);
+        AV_WB32(buffer + 25, ctx->cursor.height);
 
         /* Shape */
-        err = write_to_pipe(ctx, &ctx->cursor.width, sizeof(ctx->cursor.width));
-        if (err < 0)
-            return err;
+        AV_WB32(buffer + 29, ctx->cursor.size);
 
-        err = write_to_pipe(ctx, &ctx->cursor.height, sizeof(ctx->cursor.height));
-        if (err < 0)
-            return err;
-
-        err = write_to_pipe(ctx, &ctx->cursor.size, sizeof(ctx->cursor.size));
-        if (err < 0)
-            return err;
-
-        err = write_to_pipe(ctx, ctx->cursor.data, ctx->cursor.size * sizeof(uint32_t));
-        if (err < 0)
-            return err;
+        for (uint32_t i = 0; i < ctx->cursor.size; i++) {
+            AV_WB32(buffer + 33 + i * sizeof(uint32_t), ctx->cursor.data[i]);
+        }
     }
 
-    return 0;
+    err = write_to_pipe(ctx, buffer, buffer_size);
+
+    av_free(buffer);
+
+    return err;
 }
 
 static int handle_colored_cursor(ArgbCursor *argb_cursor,
