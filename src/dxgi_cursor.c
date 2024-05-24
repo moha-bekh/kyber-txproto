@@ -52,6 +52,7 @@ typedef struct ArgbCursor {
 
 struct DxgiCursorHandler {
     SPClass *class;
+    uint32_t identifier;
 
     /* Worker thread */
     AVBufferRef *fifo;
@@ -149,6 +150,10 @@ static int write_to_pipe(DxgiCursorHandler *ctx, const void *data, size_t size)
 static int send_cursor(DxgiCursorHandler *ctx, const POINT *position)
 {
     int err;
+
+    err = write_to_pipe(ctx, &ctx->identifier, sizeof(ctx->identifier));
+    if (err < 0)
+        return err;
 
     err = write_to_pipe(ctx, &ctx->visible, sizeof(ctx->visible));
     if (err < 0)
@@ -529,10 +534,11 @@ static void *sender_thread(void *arg)
     return NULL;
 }
 
-int sp_dxgi_cursor_handler_init(DxgiCursorHandler **out_ctx)
+int sp_dxgi_cursor_handler_init(DxgiCursorHandler **out_ctx, uint32_t identifier)
 {
     DxgiCursorHandler *ctx = av_mallocz(sizeof(*ctx));
 
+    ctx->identifier = identifier;
     ctx->pipe_handle = INVALID_HANDLE_VALUE;
 
     int err = sp_class_alloc(ctx, "dxgi_cursor", SP_TYPE_SCRIPT, NULL);

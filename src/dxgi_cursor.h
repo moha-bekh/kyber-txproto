@@ -22,7 +22,7 @@
 
 typedef struct DxgiCursorHandler DxgiCursorHandler;
 
-int sp_dxgi_cursor_handler_init(DxgiCursorHandler **ctx);
+int sp_dxgi_cursor_handler_init(DxgiCursorHandler **ctx, uint32_t identifier);
 void sp_dxgi_cursor_handler_uninit(DxgiCursorHandler **ctx);
 
 int sp_dxgi_cursor_handler_send(DxgiCursorHandler *ctx,
