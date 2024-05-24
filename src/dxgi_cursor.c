@@ -49,6 +49,9 @@ typedef struct ArgbCursor {
 
     int32_t xhot;
     int32_t yhot;
+
+    int32_t x;
+    int32_t y;
 } ArgbCursor;
 
 struct DxgiCursorHandler {
@@ -148,7 +151,7 @@ static int write_to_pipe(DxgiCursorHandler *ctx, const void *data, size_t size)
     return 0;
 }
 
-static int send_cursor(DxgiCursorHandler *ctx, const POINT *position)
+static int send_cursor(DxgiCursorHandler *ctx)
 {
     size_t buffer_size;
     int err;
@@ -185,8 +188,8 @@ static int send_cursor(DxgiCursorHandler *ctx, const POINT *position)
          * The position must actually be updated with the Hotspot.
          * Otherwise the cursor position has a small delta.
          */
-        AV_WB32(buffer + 5, position->x + ctx->cursor.xhot);
-        AV_WB32(buffer + 9, position->y + ctx->cursor.yhot);
+        AV_WB32(buffer + 5, ctx->cursor.x + ctx->cursor.xhot);
+        AV_WB32(buffer + 9, ctx->cursor.y + ctx->cursor.yhot);
 
         /* Hotspot */
         AV_WB32(buffer + 13, ctx->cursor.xhot);
@@ -423,6 +426,9 @@ static int handle_cursor(DxgiCursorHandler *ctx, DxgiCursor *handle)
         ctx->cursor.xhot = handle->shape_info.HotSpot.x;
         ctx->cursor.yhot = handle->shape_info.HotSpot.y;
 
+        ctx->cursor.x = handle->position.x;
+        ctx->cursor.y = handle->position.y;
+
         switch (handle->shape_info.Type) {
         case DXGI_OUTDUPL_POINTER_SHAPE_TYPE_COLOR:
             handle_colored_cursor(&ctx->cursor, handle);
@@ -478,11 +484,7 @@ static void *sender_thread(void *arg)
                 ResetEvent(ctx->completion_event);
                 ctx->connected = 1;
 
-                POINT position;
-                position.x = 0;
-                position.y = 0;
-
-                err = send_cursor(ctx, &position);
+                err = send_cursor(ctx);
                 if (err < 0) {
                     close_pipe(ctx);
                     ctx->connected = 0;
@@ -519,7 +521,7 @@ static void *sender_thread(void *arg)
 
             int send = handle_cursor(ctx, handle);
             if (send) {
-                err = send_cursor(ctx, &handle->position);
+                err = send_cursor(ctx);
                 if (err < 0) {
                     close_pipe(ctx);
                     ctx->connected = 0;
