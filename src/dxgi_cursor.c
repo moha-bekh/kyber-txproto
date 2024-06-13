@@ -446,6 +446,9 @@ static int handle_cursor(DxgiCursorHandler *ctx, DxgiCursor *handle)
         updated = 1;
 
         ctx->visible = 1;
+
+        ctx->cursor.x = handle->position.x;
+        ctx->cursor.y = handle->position.y;
     }
 
     return updated;
