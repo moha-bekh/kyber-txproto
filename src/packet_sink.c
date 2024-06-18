@@ -41,7 +41,8 @@ static uint32_t get_kymux_codec(enum AVCodecID id) {
 static int send_config(PacketSinkContext *ctx,
                        const uint8_t *extradata,
                        size_t extradata_size,
-                       uint8_t rotation)
+                       uint8_t rotation,
+                       uint16_t frame_size)
 {
     unsigned char header[12];
 
@@ -54,7 +55,8 @@ static int send_config(PacketSinkContext *ctx,
     // Send codec packet
     AV_WB32(header, kymux_codec);
     header[4] = rotation;
-    memset(header + 5, 0, 7);
+    AV_WB16(&header[5], frame_size);
+    memset(header + 7, 0, 5);
     int w = net_send_all(ctx->socket, header, sizeof(header));
     if (w == -1)
         return -1;
@@ -86,7 +88,8 @@ int sp_packet_sink_set_encoding_ctx(PacketSinkContext *ctx,
     send_config(ctx,
                 enc->avctx->extradata,
                 enc->avctx->extradata_size,
-                enc->rotation);
+                enc->rotation,
+                enc->frame_size);
 
     return 0;
 }
@@ -123,7 +126,7 @@ static void check_config_update(PacketSinkContext *ctx, AVPacket *in_pkt)
         return;
     }
 
-    const char *str_rotation = dict_get(dict, "rotation");;
+    const char *str_rotation = dict_get(dict, "rotation");
     if (!str_rotation) {
         sp_log(ctx, SP_LOG_WARN, "Key \"rotation\" not found\n");
         goto fail;
@@ -135,8 +138,20 @@ static void check_config_update(PacketSinkContext *ctx, AVPacket *in_pkt)
         goto fail;
     }
 
+    const char *str_frame_size = dict_get(dict, "frame_size");
+    if (!str_frame_size) {
+        sp_log(ctx, SP_LOG_WARN, "Key \"frame_size\" not found\n");
+        goto fail;
+    }
+
+    long int frame_size = strtol(str_frame_size, NULL, 10);
+    if (frame_size & ~0xFFFF) {
+        sp_log(ctx, SP_LOG_WARN, "Invalid frame_size \"%s\"\n", str_frame_size);
+        goto fail;
+    }
+
     // Send config
-    send_config(ctx, extradata, extradata_size, rotation);
+    send_config(ctx, extradata, extradata_size, rotation, frame_size);
 
     return;
 

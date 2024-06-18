@@ -247,6 +247,20 @@ AVBufferRef *tx_encoder_create(TXMainContext *ctx,
 
     ectx->codec_config = options->options;
     ectx->pix_fmt = options->pix_fmt;
+    ectx->frame_size = 0;
+
+    // Read frame_duration from the codec config options
+    const char *str_frame_duration = dict_get(ectx->codec_config, "frame_duration");
+    if (str_frame_duration) {
+        long int frame_duration = strtol(str_frame_duration, NULL, 10);
+        if (frame_duration & ~0xFFFF) {
+            sp_log(ctx, SP_LOG_WARN, "Invalid frame_duration \"%s\"\n", str_frame_duration);
+            goto err;
+        }
+
+        // XXX Assume 48kHz (ectx->sample_rate is not set at this point)
+        ectx->frame_size = (uint16_t) (frame_duration * 48);
+    }
 
     if (options->init_opts) {
         err = sp_encoder_ctrl(ectx_ref, SP_EVENT_CTRL_OPTS | SP_EVENT_FLAG_IMMEDIATE, options->init_opts);

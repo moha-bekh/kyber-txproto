@@ -513,6 +513,7 @@ static int attach_sidedata(EncodingContext *ctx,
     AVDictionary *dict = NULL;
 
     av_dict_set_int(&dict, "rotation", ctx->rotation, 0);
+    av_dict_set_int(&dict, "frame_size", ctx->frame_size, 0);
 
     /* Attach metadata */
     size_t packed_dict_size = 0;
@@ -930,6 +931,7 @@ AVBufferRef *sp_encoder_alloc(void)
     pthread_mutex_init(&ctx->lock, NULL);
     ctx->pix_fmt = AV_PIX_FMT_NONE;
     ctx->rotation = ROTATION_IDENTITY;
+    ctx->frame_size = 0;
     ctx->sample_fmt = AV_SAMPLE_FMT_NONE;
     ctx->events = sp_bufferlist_new();
     ctx->swr = swr_alloc();
