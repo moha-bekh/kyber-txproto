@@ -86,8 +86,8 @@ static int init_avctx(EncodingContext *ctx, AVFrame *conf)
     ctx->avctx->opaque                = ctx;
     ctx->avctx->time_base             = fe->time_base;
     ctx->avctx->compression_level     = 7;
-    ctx->avctx->thread_count          = av_cpu_count();
-    ctx->avctx->thread_type           = FF_THREAD_FRAME | FF_THREAD_SLICE;
+    ctx->avctx->thread_count          = 2;
+    ctx->avctx->thread_type           = FF_THREAD_SLICE;
     ctx->avctx->strict_std_compliance = FF_COMPLIANCE_EXPERIMENTAL;
 
     if (ctx->codec_config) {
