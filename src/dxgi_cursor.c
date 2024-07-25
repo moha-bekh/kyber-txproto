@@ -74,6 +74,7 @@ struct DxgiCursorHandler {
     OVERLAPPED overlapped;
 
     /* Cursor state */
+    int first_frame;
     uint8_t visible;
     ArgbCursor cursor;
 };
@@ -583,6 +584,7 @@ int sp_dxgi_cursor_handler_init(DxgiCursorHandler **out_ctx, uint32_t identifier
     ctx->identifier = identifier;
     ctx->pipe_handle = INVALID_HANDLE_VALUE;
     ctx->quit = ATOMIC_VAR_INIT(0);
+    ctx->first_frame = 1;
 
     int err = sp_class_alloc(ctx, "dxgi_cursor", SP_TYPE_SCRIPT, NULL);
     if (err < 0)
@@ -622,29 +624,46 @@ int sp_dxgi_cursor_handler_send(DxgiCursorHandler *ctx,
                         IDXGIOutputDuplication *output_duplication,
                         const DXGI_OUTDUPL_FRAME_INFO *frame_info)
 {
-    if (!frame_info->LastMouseUpdateTime.QuadPart)
-        return 0;
+    AVBufferRef *ref;
+    DxgiCursor *dxgi_cursor;
 
-    AVBufferRef *ref = dxgi_cursor_alloc();
-    DxgiCursor *dxgi_cursor = (DxgiCursor *)ref->data;
-
-    const DXGI_OUTDUPL_POINTER_POSITION *position = &frame_info->PointerPosition;
-    dxgi_cursor->visible = position->Visible;
-    dxgi_cursor->position = position->Position;
-
-    if (frame_info->PointerShapeBufferSize) {
-        dxgi_cursor->size = frame_info->PointerShapeBufferSize;
-        dxgi_cursor->data = av_mallocz(dxgi_cursor->size);
-
-        UINT required_size;
-        HRESULT hr;
-        hr = IDXGIOutputDuplication_GetFramePointerShape(output_duplication,
-                                                         frame_info->PointerShapeBufferSize,
-                                                         dxgi_cursor->data,
-                                                         &required_size,
-                                                         &dxgi_cursor->shape_info);
-        if (FAILED(hr)) {
+    if (!frame_info->LastMouseUpdateTime.QuadPart) {
+        if (!ctx->first_frame) {
             return 0;
+        }
+
+        /* DXGI sends a zero LastMouseUpdateTime if there are no cursor when
+        * acquisition starts. Handle the first call in this case as an hidden
+        * cursor.
+        */
+        ref = dxgi_cursor_alloc();
+        dxgi_cursor = (DxgiCursor *)ref->data;
+
+        dxgi_cursor->visible = 0;
+    } else {
+        ref = dxgi_cursor_alloc();
+        dxgi_cursor = (DxgiCursor *)ref->data;
+
+        const DXGI_OUTDUPL_POINTER_POSITION *position = &frame_info->PointerPosition;
+        dxgi_cursor->visible = position->Visible;
+        dxgi_cursor->position = position->Position;
+
+        if (frame_info->PointerShapeBufferSize) {
+            dxgi_cursor->size = frame_info->PointerShapeBufferSize;
+            dxgi_cursor->data = av_mallocz(dxgi_cursor->size);
+
+            UINT required_size;
+            HRESULT hr;
+
+            hr = IDXGIOutputDuplication_GetFramePointerShape(
+                output_duplication,
+                frame_info->PointerShapeBufferSize,
+                dxgi_cursor->data,
+                &required_size,
+                &dxgi_cursor->shape_info);
+            if (FAILED(hr)) {
+                return 0;
+            }
         }
     }
 
@@ -652,6 +671,8 @@ int sp_dxgi_cursor_handler_send(DxgiCursorHandler *ctx,
     SetEvent(ctx->fifo_event);
 
     av_buffer_unref(&ref);
+
+    ctx->first_frame = 0;
 
     return 0;
 }
