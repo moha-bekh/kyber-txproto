@@ -51,6 +51,7 @@ typedef struct EncodingContext {
     /* State */
     atomic_int initialized;
     atomic_int running;
+    atomic_int force_idr;
 
     /* Video options only */
     int width, height;

@@ -681,6 +681,13 @@ static void *encoding_thread(void *arg)
             if (!atomic_load(&ctx->soft_flush)) {
                 out_pkt = av_packet_alloc();
 
+                int clear_forced_idr = 0;
+                if (atomic_load(&ctx->force_idr)) {
+                    av_opt_set(ctx->avctx->priv_data, "forced-idr", "1", 0);
+                    frame->pict_type = AV_PICTURE_TYPE_I;
+                    clear_forced_idr = 1;
+                }
+
                 /* Give frame */
                 ret = avcodec_send_frame(ctx->avctx, frame);
                 av_frame_free(&frame);
@@ -688,6 +695,11 @@ static void *encoding_thread(void *arg)
                     sp_log(ctx, SP_LOG_ERROR, "Error encoding(%d): %s!\n", __LINE__, av_err2str(ret));
                     pthread_mutex_unlock(&ctx->lock);
                     goto fail;
+                }
+
+                if (clear_forced_idr) {
+                    av_opt_set(ctx->avctx->priv_data, "forced-idr", "0", 0);
+                    atomic_store(&ctx->force_idr, 0);
                 }
             } else {
                 sp_log(ctx, SP_LOG_VERBOSE, "Soft-flushing encoder\n");
@@ -824,6 +836,9 @@ static int encoder_ioctx_ctrl_cb(AVBufferRef *event_ref, void *callback_ctx,
 
             sp_log(ctx, SP_LOG_INFO, "Change bitrate to %d\n", bitrate);
             ctx->avctx->bit_rate = bitrate;
+        } else if (!strcmp(command, "force_idr")) {
+            sp_log(ctx, SP_LOG_INFO, "Force IDR\n");
+            atomic_store(&ctx->force_idr, 1);
         } else {
             sp_log(ctx, SP_LOG_WARN, "Got unknown command %s\n", command);
         }
@@ -936,6 +951,7 @@ AVBufferRef *sp_encoder_alloc(void)
     ctx->events = sp_bufferlist_new();
     ctx->swr = swr_alloc();
     ctx->soft_flush = ATOMIC_VAR_INIT(0);
+    ctx->force_idr = ATOMIC_VAR_INIT(0);
 
     ctx->src_frames = sp_frame_fifo_create(ctx, 8, FRAME_FIFO_BLOCK_NO_INPUT);
     ctx->dst_packets = sp_packet_fifo_create(ctx, 0, 0);

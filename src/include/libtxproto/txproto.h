@@ -71,6 +71,8 @@ AVBufferRef *tx_encoder_create(TXMainContext *ctx,
 
 int tx_encoder_set_bitrate(TXMainContext *ctx, AVBufferRef *encoder, int bitrate);
 
+int tx_encoder_force_idr(TXMainContext *ctx, AVBufferRef *encoder);
+
 AVBufferRef *tx_muxer_create(TXMainContext *ctx, const char *out_url,
                              const char *out_format, AVDictionary *options,
                              AVDictionary *init_opts);
