@@ -535,7 +535,7 @@ static int fill_entry(WasapiCtx *ctx, IOSysEntry *entry, IMMDevice *dev, uint32_
 
     hr = IMMDevice_Activate(dev, &IID_IAudioClient, CLSCTX_ALL, NULL, (LPVOID *) &client);
     if (hr != S_OK) {
-        sp_log(ctx, SP_LOG_ERROR, "Failed to activate device: %lX\n", hr);
+        sp_log(ctx, SP_LOG_TRACE, "Failed to activate device: %lX\n", hr);
         goto error;
     }
 
@@ -682,7 +682,7 @@ static int enumerate_entries(WasapiCtx *ctx)
         ret = fill_entry(ctx, entry, dev, default_id);
         IMMDevice_Release(dev);
         if (ret < 0) {
-            sp_log(ctx, SP_LOG_ERROR, "Fail to fill entry\n");
+            sp_log(ctx, SP_LOG_TRACE, "Fail to fill entry\n");
             continue;
         }
 
