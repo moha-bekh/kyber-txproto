@@ -202,6 +202,7 @@ static int open_d3ddevice(DxgiCtx *ctx)
     }
 
     if (FAILED(hr)) {
+        sp_log(ctx, SP_LOG_ERROR, "No D3D11 device found\n");
         return AVERROR_EXTERNAL;
     }
 
@@ -209,6 +210,7 @@ static int open_d3ddevice(DxgiCtx *ctx)
                                      &IID_IUnknown,
                                      (void **)&ctx->d3d11_device_base);
     if (FAILED(hr)) {
+        sp_log(ctx, SP_LOG_ERROR, "Failed to get IUnknown from D3D11 device: 0x%lX\n", hr);
         goto fail;
     }
 
@@ -217,6 +219,7 @@ static int open_d3ddevice(DxgiCtx *ctx)
                                      &IID_ID3D10Multithread,
                                      (void **)&device_multithread);
     if (FAILED(hr)) {
+        sp_log(ctx, SP_LOG_ERROR, "Failed to get ID3D10Multithread from D3D11 device: 0x%lX\n", hr);
         goto fail;
     }
 
@@ -228,7 +231,7 @@ static int open_d3ddevice(DxgiCtx *ctx)
                                      &IID_IDXGIDevice,
                                      (void **)&dxgi_device);
     if (FAILED(hr)) {
-        sp_log(ctx, SP_LOG_ERROR, "ID3D11Device_QueryInterface failed: 0x%lX\n", hr);
+        sp_log(ctx, SP_LOG_ERROR, "Failed to get IID_IDXGIDevice from D3D11 device: 0x%lX\n", hr);
         goto fail;
     }
 
@@ -237,7 +240,7 @@ static int open_d3ddevice(DxgiCtx *ctx)
                                (void **)&ctx->dxgi_adapter);
     IDXGIDevice_Release(dxgi_device);
     if (FAILED(hr)) {
-        sp_log(ctx, SP_LOG_ERROR, "IDXGIDevice_GetParent failed: 0x%lX\n", hr);
+        sp_log(ctx, SP_LOG_ERROR, "IDXGIDevice_GetParent() failed: 0x%lX\n", hr);
         goto fail;
     }
 
@@ -269,13 +272,16 @@ static int update_entries(DxgiCtx *ctx)
         IDXGIOutput *output;
         hr = IDXGIAdapter_EnumOutputs(ctx->dxgi_adapter, i, &output);
         if (FAILED(hr)) {
+            if (hr != DXGI_ERROR_NOT_FOUND)
+                sp_log(ctx, SP_LOG_ERROR, "IDXGIAdapter_EnumOutputs() failed: 0x%lX\n", hr);
+
             break;
         }
 
         DXGI_OUTPUT_DESC desc;
         hr = IDXGIOutput_GetDesc(output, &desc);
         if (FAILED(hr)) {
-            sp_log(ctx, SP_LOG_ERROR, "IDXGIOutput_GetDesc failed: 0x%lX\n", hr);
+            sp_log(ctx, SP_LOG_ERROR, "IDXGIOutput_GetDesc() failed: 0x%lX\n", hr);
 
             IDXGIOutput_Release(output);
             return AVERROR_EXTERNAL;
@@ -476,12 +482,16 @@ static IDXGIOutput1 *get_dxgi_output(DxgiCtx *ctx, IOSysEntry *entry)
         IDXGIOutput *output;
         hr = IDXGIAdapter_EnumOutputs(ctx->dxgi_adapter, i, &output);
         if (FAILED(hr)) {
+            if (hr != DXGI_ERROR_NOT_FOUND)
+                sp_log(ctx, SP_LOG_ERROR, "IDXGIAdapter_EnumOutputs() failed: 0x%lX\n", hr);
+
             return NULL;
         }
 
         DXGI_OUTPUT_DESC desc;
         hr = IDXGIOutput_GetDesc(output, &desc);
         if (FAILED(hr)) {
+            sp_log(ctx, SP_LOG_ERROR, "IDXGIOutput_GetDesc() failed: 0x%lX\n", hr);
             IDXGIOutput_Release(output);
             return NULL;
         }
@@ -499,6 +509,7 @@ static IDXGIOutput1 *get_dxgi_output(DxgiCtx *ctx, IOSysEntry *entry)
             IDXGIOutput_Release(output);
             output = NULL;
             if (FAILED(hr)) {
+                sp_log(ctx, SP_LOG_ERROR, "Failed to get IDXGIOutput1 from IDXGIOutput: 0x%lX\n", hr);
                 return NULL;
             } else {
                 return dxgi_output1;
@@ -526,7 +537,8 @@ static void release_texture_pool(DxgiCapture *priv)
     priv->height = -1;
 }
 
-static int allocate_texture_pool(DxgiCapture *priv, ID3D11Device* device, int width, int height)
+static int allocate_texture_pool(DxgiCtx *ctx, DxgiCapture *priv,
+                                 ID3D11Device* device, int width, int height)
 {
     int err;
 
@@ -536,19 +548,31 @@ static int allocate_texture_pool(DxgiCapture *priv, ID3D11Device* device, int wi
      * ID3D11Device_AddRef() must be called.
      */
     priv->hw_device_context = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_D3D11VA);
+    if (!priv->hw_device_context) {
+        sp_log(ctx, SP_LOG_ERROR, "av_hwdevice_ctx_alloc() failed\n");
+        return AVERROR(ENOMEM);
+    }
 
     AVD3D11VADeviceContext *d3d11va_context = (((AVHWDeviceContext *) priv->hw_device_context->data)->hwctx);
+    if (!d3d11va_context) {
+        sp_log(ctx, SP_LOG_ERROR, "Got NULL AVD3D11VADeviceContext\n");
+        err = AVERROR_EXTERNAL;
+        goto fail;
+    }
+
     ID3D11Device_AddRef(device);
     d3d11va_context->device = device;
 
     err = av_hwdevice_ctx_init(priv->hw_device_context);
     if (err < 0) {
+        sp_log(ctx, SP_LOG_ERROR, "av_hwdevice_ctx_init() failed\n");
         goto fail;
     }
 
     /* Init av_hwframe_ctx */
     priv->hw_frames_ctx = av_hwframe_ctx_alloc(priv->hw_device_context);
     if (!priv->hw_frames_ctx) {
+        sp_log(ctx, SP_LOG_ERROR, "av_hwframe_ctx_alloc() failed\n");
         err = AVERROR(ENOMEM);
         goto fail;
     }
@@ -567,6 +591,7 @@ static int allocate_texture_pool(DxgiCapture *priv, ID3D11Device* device, int wi
 
     err = av_hwframe_ctx_init(priv->hw_frames_ctx);
     if (err < 0) {
+        sp_log(ctx, SP_LOG_ERROR, "av_hwframe_ctx_init() failed: %d\n", err);
         goto fail;
     }
 
@@ -608,6 +633,7 @@ static int start_capture(DxgiCapture *priv, DxgiCtx *ctx, IDXGIOutput1 *dxgi_out
 
     err = SetThreadDesktop(priv->current_desk);
     if (!err) {
+        sp_log(ctx, SP_LOG_ERROR, "SetThreadDesktop() failed: 0x%lX\n", GetLastError());
         goto fail;
     }
 
@@ -656,6 +682,7 @@ static int check_resolution_change(DxgiCapture *priv,
                                         &IID_ID3D11Texture2D,
                                         (void **)&tex2d);
     if (FAILED(hr)) {
+        sp_log(ctx, SP_LOG_ERROR, "Failed to get D3D11Texture2D from ID3D11Resource: 0x%lX\n", hr);
         return AVERROR_EXTERNAL;
     }
 
@@ -672,11 +699,13 @@ static int check_resolution_change(DxgiCapture *priv,
         priv->width = desc.Width;
         priv->height = desc.Height;
 
-        err = allocate_texture_pool(priv,
+        err = allocate_texture_pool(ctx,
+                                    priv,
                                     ctx->d3d11_device,
                                     priv->width,
                                     priv->height);
         if (err < 0) {
+            sp_log(ctx, SP_LOG_ERROR, "allocate_texture_pool() failed: %d\n", err);
             return err;
         }
     }
@@ -699,6 +728,7 @@ static void *dxgi_capture_thread(void *s)
 
     dxgi_output = get_dxgi_output(ctx, entry);
     if (!dxgi_output) {
+        sp_log(ctx, SP_LOG_ERROR, "get_dxgi_output() failed\n");
         err = AVERROR_EXTERNAL;
         goto fail;
     }
@@ -754,6 +784,7 @@ static void *dxgi_capture_thread(void *s)
         IDXGIResource_Release(acquired_resource);
         acquired_resource = NULL;
         if (FAILED(hr)) {
+            sp_log(ctx, SP_LOG_ERROR, "Failed to get ID3D11Resource from IDXGIResource: 0x%lX\n", hr);
             err = AVERROR_EXTERNAL;
             goto fail;
         }
@@ -761,6 +792,7 @@ static void *dxgi_capture_thread(void *s)
         /* Check for resolution change */
         err = check_resolution_change(priv, ctx, acquired_tex);
         if (err < 0) {
+            sp_log(ctx, SP_LOG_ERROR, "check_resolution_change() failed: %d\n", err);
             goto fail;
         }
 
@@ -779,7 +811,7 @@ static void *dxgi_capture_thread(void *s)
                 sp_log(entry, SP_LOG_WARN, "Acquisition access lost\n");
                 stop_capture(priv);
             } else if (FAILED(hr)) {
-               sp_log(entry, SP_LOG_ERROR, "IDXGIOutputDuplication_ReleaseFrame() failed\n");
+               sp_log(entry, SP_LOG_ERROR, "IDXGIOutputDuplication_ReleaseFrame() failed: %lX\n", hr);
             }
 
             continue;
@@ -796,6 +828,7 @@ static void *dxgi_capture_thread(void *s)
                                             &IID_ID3D11Resource,
                                             (void **)&target_ressource);
         if (FAILED(hr)) {
+            sp_log(ctx, SP_LOG_ERROR, "Failed to get ID3D11Resource from ID3D11Texture2D: 0x%lX\n", hr);
             err = AVERROR_EXTERNAL;
             goto fail;
         }
@@ -818,7 +851,7 @@ static void *dxgi_capture_thread(void *s)
             stop_capture(priv);
             continue;
         } else if (FAILED(hr)) {
-            sp_log(entry, SP_LOG_ERROR, "IDXGIOutputDuplication_ReleaseFrame() failed\n");
+            sp_log(entry, SP_LOG_ERROR, "IDXGIOutputDuplication_ReleaseFrame() failed: 0x%lX\n", hr);
         }
 
         /* Fill metadata */
@@ -877,6 +910,8 @@ fail:
 
     if (err < 0)
         sp_eventlist_dispatch(entry, entry->events, SP_EVENT_ON_ERROR, NULL);
+
+    sp_log(entry, SP_LOG_INFO, "Acquisition stopped\n");
 
     return NULL;
 }
