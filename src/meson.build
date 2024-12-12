@@ -27,6 +27,7 @@ sources = [
     # Misc
     'utils.c',
     'log.c',
+    'fifo_bufferref.c',
     'fifo_frame.c',
     'fifo_packet.c',
     'os_compat.c',
@@ -163,6 +164,7 @@ have_dxgi = lib_d3d11.found() and lib_dxgi.found()
 if have_dxgi
     dependencies += lib_d3d11
     dependencies += lib_dxgi
+    sources += 'dxgi_cursor.c'
     sources += 'iosys_dxgi.c'
     conf.set('HAVE_DXGI', 1)
 endif

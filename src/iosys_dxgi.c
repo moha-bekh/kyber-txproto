@@ -32,6 +32,7 @@
 #include <libavutil/pixdesc.h>
 #include <libavutil/time.h>
 
+#include "dxgi_cursor.h"
 #include "iosys_common.h"
 #include "os_compat.h"
 #include "utils.h"
@@ -107,6 +108,7 @@ typedef struct DxgiCapture {
     /* Windows capture */
     HDESK current_desk;
     IDXGIOutputDuplication *output_duplication;
+    DxgiCursorHandler *cursor_sink;
 
     int64_t epoch;
 
@@ -733,6 +735,10 @@ static void *dxgi_capture_thread(void *s)
         goto fail;
     }
 
+    if (sp_dxgi_cursor_handler_init(&priv->cursor_sink) < 0) {
+        goto fail;
+    }
+
     while (!atomic_load(&priv->quit)) {
         /* Capture may be restarted multiple time during a session in some cases:
          * - Fullscreen switch
@@ -775,6 +781,13 @@ static void *dxgi_capture_thread(void *s)
         if (!priv->got_first_frame) {
             sp_log(entry, SP_LOG_INFO, "First frame acquired\n");
             priv->got_first_frame = 1;
+        }
+
+        /* Copy cursor */
+        if (priv->cursor_sink) {
+            sp_dxgi_cursor_handler_send(priv->cursor_sink,
+                                        priv->output_duplication,
+                                        &frame_info);
         }
 
         ID3D11Resource *acquired_tex;
@@ -905,6 +918,10 @@ fail:
 
     if (dxgi_output)
         IDXGIOutput1_Release(dxgi_output);
+
+    if (priv->cursor_sink) {
+        sp_dxgi_cursor_handler_uninit(&priv->cursor_sink);
+    }
 
     priv->err = err;
 
