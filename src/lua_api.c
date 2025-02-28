@@ -627,7 +627,7 @@ static int lua_create_packet_sink(lua_State *L)
 
     GET_OPT_STR(psctx->uri, "uri");
 
-    err = sp_packet_sink_init(psctx_ref);
+    err = sp_packet_sink_init(psctx_ref, NULL);
     if (err < 0)
         LUA_ERROR("Unable to init packet sink: %s!", av_err2str(err));
 
@@ -668,7 +668,7 @@ static int lua_create_encoder(lua_State *L)
         LUA_ERROR("Encoder \"%s\" not found!", enc_name);
 
     GET_OPT_STR(ectx->name, "name");
-    err = sp_encoder_init(ectx_ref);
+    err = sp_encoder_init(ectx_ref, NULL);
     if (err < 0)
         LUA_ERROR("Unable to init encoder: %s!", av_err2str(err));
 

@@ -16,6 +16,7 @@
 #include <libtxproto/txproto.h>
 #include "iosys_common.h"
 #include "packet_sink.h"
+#include "metrics.h"
 
 #include "net.h"
 
@@ -146,6 +147,16 @@ int tx_commit(TXMainContext *ctx)
     return sp_eventlist_dispatch(ctx, ctx->events, SP_EVENT_ON_COMMIT, NULL);
 }
 
+int tx_set_metrics_cb(TXMainContext *ctx, tx_metrics_cb cb, void *userdata)
+{
+    ctx->metrics.cb = cb;
+    ctx->metrics.userdata = userdata;
+
+    // The function could return void, but a future implementation may need to
+    // return an error
+    return 0;
+}
+
 int tx_ctrl(TXMainContext *ctx, AVBufferRef *ref, SPEventType flags, void *arg)
 {
     return sp_generic_ctrl(ctx, ref, flags, arg);
@@ -239,7 +250,8 @@ AVBufferRef *tx_encoder_create(TXMainContext *ctx,
 
     ectx->name = options->name;
 
-    err = sp_encoder_init(ectx_ref);
+    struct tx_metrics *metrics = tx_get_metrics(ctx);
+    err = sp_encoder_init(ectx_ref, metrics);
     if (err < 0) {
         sp_log(ctx, SP_LOG_ERROR, "Unable to init encoder: %s!", av_err2str(err));
         goto err;
@@ -464,7 +476,8 @@ AVBufferRef *tx_packetsink_create(TXMainContext *ctx, const char *uri)
 
     psctx->uri = strdup(uri);
 
-    err = sp_packet_sink_init(psctx_ref);
+    struct tx_metrics *metrics = tx_get_metrics(ctx);
+    err = sp_packet_sink_init(psctx_ref, metrics);
     if (err < 0) {
         sp_log(ctx, SP_LOG_ERROR, "Unable to init packet sink: %s!", av_err2str(err));
         goto err;

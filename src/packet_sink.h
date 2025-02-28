@@ -27,10 +27,12 @@ typedef struct PacketSinkContext {
     SPBufferList *events;
 
     AVBufferRef *src_packets;
+
+    struct tx_metrics *metrics;
 } PacketSinkContext;
 
 AVBufferRef *sp_packet_sink_alloc(void);
-int sp_packet_sink_init(AVBufferRef *ctx_ref);
+int sp_packet_sink_init(AVBufferRef *ctx_ref, struct tx_metrics *metrics);
 int sp_packet_sink_ctrl(AVBufferRef *ctx_ref, SPEventType ctrl, void *arg);
 int sp_packet_sink_set_encoding_ctx(PacketSinkContext *ctx,
                                     EncodingContext *enc);

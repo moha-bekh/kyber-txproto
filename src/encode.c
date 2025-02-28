@@ -19,16 +19,20 @@
 #include <libavutil/avstring.h>
 #include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
+#include <libavutil/time.h>
 #include <libavutil/cpu.h>
 
 #include <libtxproto/encode.h>
 #include <libtxproto/log.h>
+
+#include <assert.h>
 
 #include "encoding_utils.h"
 #include "os_compat.h"
 #include <libtxproto/utils.h>
 #include "utils.h"
 #include "ctrl_template.h"
+#include "metrics.h"
 
 static int swr_configure(EncodingContext *ctx, AVFrame *conf)
 {
@@ -688,6 +692,14 @@ static void *encoding_thread(void *arg)
                     clear_forced_idr = 1;
                 }
 
+                if (ctx->metrics) {
+                    const tx_metrics_entry metrics[] = {
+                        { .key = "pts", .value = frame->pts },
+                        { .key = "encoding", .value = av_gettime_relative() },
+                    };
+                    tx_metrics_push(ctx->metrics, metrics, SP_ARRAY_ELEMS(metrics));
+                }
+
                 /* Give frame */
                 ret = avcodec_send_frame(ctx->avctx, frame);
                 av_frame_free(&frame);
@@ -745,6 +757,14 @@ static void *encoding_thread(void *arg)
 
             out_pkt->opaque = (void *)(intptr_t)sp_class_get_id(ctx);
             out_pkt->time_base = ctx->avctx->time_base;
+
+            if (ctx->metrics) {
+                const tx_metrics_entry metrics[] = {
+                    { .key = "pts", .value = out_pkt->pts },
+                    { .key = "encoded", .value = av_gettime_relative() },
+                };
+                tx_metrics_push(ctx->metrics, metrics, SP_ARRAY_ELEMS(metrics));
+            }
 
             sp_log(ctx, SP_LOG_TRACE, "Pushing packet to FIFO, pts = %f\n",
                    av_q2d(ctx->avctx->time_base) * out_pkt->pts);
@@ -856,7 +876,7 @@ int sp_encoder_ctrl(AVBufferRef *ctx_ref, SPEventType ctrl, void *arg)
                             encoder_ioctx_ctrl_cb, ctrl, arg);
 }
 
-int sp_encoder_init(AVBufferRef *ctx_ref)
+int sp_encoder_init(AVBufferRef *ctx_ref, struct tx_metrics *metrics)
 {
     int err;
     EncodingContext *ctx = (EncodingContext *)ctx_ref->data;
@@ -865,6 +885,9 @@ int sp_encoder_init(AVBufferRef *ctx_ref)
         sp_log(ctx, SP_LOG_ERROR, "Missing codec!\n");
         return AVERROR(EINVAL);
     }
+
+    assert(!metrics || metrics->cb);
+    ctx->metrics = metrics;
 
     ctx->avctx = avcodec_alloc_context3(ctx->codec);
     if (!ctx->avctx)

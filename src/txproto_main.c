@@ -35,6 +35,7 @@
 
 #include <libtxproto/txproto_main.h>
 
+#include "metrics.h"
 #include "net.h"
 
 #ifdef HAVE_LIBEDIT
@@ -153,6 +154,8 @@ int main(int argc, char *argv[])
     ctx->ext_buf_refs = sp_bufferlist_new();
     ctx->epoch_value = ATOMIC_VAR_INIT(0);
     ctx->source_update_cb_ref = LUA_NOREF;
+
+    tx_metrics_init(&ctx->metrics);
 
     /* Options */
     int enable_cli = 0;

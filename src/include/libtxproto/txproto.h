@@ -26,6 +26,7 @@ typedef struct TXMainContext TXMainContext;
 
 #include <libtxproto/events.h>
 #include <libtxproto/io.h>
+#include <libtxproto/metrics.h>
 
 TXMainContext *tx_new(void);
 
@@ -45,6 +46,8 @@ int tx_epoch_set_offset(TXMainContext *ctx, int64_t value);
 int tx_epoch_set_system(TXMainContext *ctx);
 
 int tx_commit(TXMainContext *ctx);
+
+int tx_set_metrics_cb(TXMainContext *ctx, tx_metrics_cb cb, void *userdata);
 
 int tx_ctrl(TXMainContext *ctx, AVBufferRef *ref, SPEventType flags, void *arg);
 

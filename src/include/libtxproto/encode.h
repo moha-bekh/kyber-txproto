@@ -84,8 +84,10 @@ typedef struct EncodingContext {
     int attach_sidedata;
 
     int err;
+
+    struct tx_metrics *metrics;
 } EncodingContext;
 
 AVBufferRef *sp_encoder_alloc(void);
-int sp_encoder_init(AVBufferRef *ctx_ref);
+int sp_encoder_init(AVBufferRef *ctx_ref, struct tx_metrics *metrics);
 int sp_encoder_ctrl(AVBufferRef *ctx_ref, SPEventType ctrl, void *arg);

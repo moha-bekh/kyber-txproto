@@ -143,6 +143,10 @@ AVBufferRef *sp_io_create(TXMainContext *ctx,
         return NULL;
     }
 
+    struct tx_metrics *metrics = tx_get_metrics(ctx);
+    if (metrics && sp_compiled_apis[i]->set_metrics)
+        sp_compiled_apis[i]->set_metrics(ctx->io_api_ctx[i], metrics);
+
     sp_bufferlist_append_noref(ctx->ext_buf_refs, entry);
 
     return entry;

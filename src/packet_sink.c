@@ -3,6 +3,7 @@
 #include <libavformat/avformat.h>
 #include <libavutil/intreadwrite.h>
 #include <libavutil/buffer.h>
+#include <libavutil/time.h>
 
 #include <stdatomic.h>
 #include <unistd.h>
@@ -11,6 +12,7 @@
 #include <libtxproto/utils.h>
 #include "ctrl_template.h"
 #include "net.h"
+#include "metrics.h"
 #include "os_compat.h"
 
 #define KYMUX_CODEC_H264 UINT32_C(0x68323634)
@@ -202,6 +204,14 @@ packet_sink_thread(void *arg) {
             goto end;
         }
 
+        if (ctx->metrics) {
+            const tx_metrics_entry metrics[] = {
+                { .key = "pts", .value = in_pkt->pts },
+                { .key = "sent", .value = av_gettime_relative() },
+            };
+            tx_metrics_push(ctx->metrics, metrics, SP_ARRAY_ELEMS(metrics));
+        }
+
         av_packet_free(&in_pkt);
     }
 
@@ -323,12 +333,15 @@ static bool parse_uri(PacketSinkContext *ctx,
 }
 
 int
-sp_packet_sink_init(AVBufferRef *ctx_ref) {
+sp_packet_sink_init(AVBufferRef *ctx_ref, struct tx_metrics *metrics) {
     PacketSinkContext *ctx = (PacketSinkContext *) ctx_ref->data;
     bool ok;
 
     sp_class_set_name(ctx, "packet sink");
     sp_set_thread_name_self(sp_class_get_name(ctx));
+
+    assert(!metrics || metrics->cb);
+    ctx->metrics = metrics;
 
     // Parse URI
     assert(ctx->uri);

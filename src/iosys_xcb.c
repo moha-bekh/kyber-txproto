@@ -29,6 +29,7 @@
 #include "iosys_common.h"
 #include <libtxproto/utils.h>
 #include "ctrl_template.h"
+#include "metrics.h"
 #include "utils.h"
 #include "os_compat.h"
 #include "../config.h"
@@ -43,6 +44,8 @@ typedef struct XCBCtx {
     atomic_int quit;
     pthread_t source_update;
     pthread_mutex_t lock;
+
+    struct tx_metrics *metrics;
 
     /* Sinks list */
     SPBufferList *entries;
@@ -259,10 +262,11 @@ static void *xcb_thread(void *s)
 
         free(img_r);
 
+        int64_t ts = av_gettime_relative();
         frame->width       = entry->width;
         frame->height      = entry->height;
         frame->format      = pixfmt;
-        frame->pts         = av_gettime_relative() - priv->epoch;
+        frame->pts         = ts - priv->epoch;
         frame->time_base   = AV_TIME_BASE_Q;
         frame->data[0]     = (uint8_t *)out_buf->data;
         frame->linesize[0] = entry->width * bpp / 8;
@@ -274,6 +278,14 @@ static void *xcb_thread(void *s)
         fe->time_base       = AV_TIME_BASE_Q;
         fe->avg_frame_rate  = entry->framerate;
         fe->rotation        = entry->rotation;
+
+        if (ctx->metrics) {
+            const tx_metrics_entry metrics[] = {
+                { .key = "pts", .value = frame->pts },
+                { .key = "acquired", .value = ts },
+            };
+            tx_metrics_push(ctx->metrics, metrics, SP_ARRAY_ELEMS(metrics));
+        }
 
         sp_log(entry, SP_LOG_TRACE, "Pushing frame to FIFO, pts = %f\n",
                av_q2d(fe->time_base) * frame->pts);
@@ -745,6 +757,7 @@ static int xcb_init(AVBufferRef **s)
     XCBCtx *ctx = av_mallocz(sizeof(*ctx));
     if (!ctx)
         return AVERROR(ENOMEM);
+    ctx->metrics = NULL;
 
     AVBufferRef *ctx_ref = av_buffer_create((uint8_t *)ctx, sizeof(*ctx),
                                             xcb_uninit, NULL, 0);
@@ -818,10 +831,21 @@ fail:
     return err;
 }
 
+static int xcb_set_metrics(AVBufferRef *buffer, struct tx_metrics *metrics)
+{
+    XCBCtx *ctx = (XCBCtx *)buffer->data;
+
+    assert(!metrics || metrics->cb);
+    ctx->metrics = metrics;
+
+    return 0;
+}
+
 const IOSysAPI src_xcb = {
     .name      = "xcb",
     .ctrl      = xcb_ctrl,
     .init_sys  = xcb_init,
+    .set_metrics = xcb_set_metrics,
     .ref_entry = xcb_ref_entry,
     .init_io   = xcb_init_io,
 };

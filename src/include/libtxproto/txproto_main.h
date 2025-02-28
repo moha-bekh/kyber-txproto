@@ -27,6 +27,8 @@
 #include "version.h"
 #include "../config.h"
 
+#include <libtxproto/metrics.h>
+
 typedef struct TXMainContext {
     SPClass *class;
 
@@ -43,7 +45,15 @@ typedef struct TXMainContext {
 
     SPBufferList *events;
     SPBufferList *ext_buf_refs;
+
+    struct tx_metrics metrics;
 } TXMainContext;
+
+static inline struct tx_metrics *
+tx_get_metrics(struct TXMainContext *ctx) {
+    // NULL if no callback
+    return ctx->metrics.cb ? &ctx->metrics : NULL;
+}
 
 #include "cli.h"
 #include "lua_common.h"

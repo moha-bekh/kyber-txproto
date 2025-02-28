@@ -27,6 +27,9 @@ sources = [
     # Packet sink
     'packet_sink.c',
 
+    # Metrics
+    'metrics.c',
+
     # Misc
     'utils.c',
     'log.c',
@@ -68,6 +71,7 @@ headers = [
     'control.h',
     'link.h',
     'io.h',
+    'metrics.h',
     'txproto.h',
 ]
 

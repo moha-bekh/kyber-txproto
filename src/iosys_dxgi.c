@@ -18,6 +18,7 @@
 
 #define COBJMACROS
 
+#include <assert.h>
 #include <d3d11.h>
 #include <d3d11_4.h>
 #include <dxgi.h>
@@ -34,6 +35,7 @@
 
 #include "dxgi_cursor.h"
 #include "iosys_common.h"
+#include "metrics.h"
 #include "os_compat.h"
 #include "utils.h"
 
@@ -86,6 +88,8 @@ typedef struct DxgiCtx {
 
     atomic_int quit;
     pthread_t source_update;
+
+    struct tx_metrics *metrics;
 
     /* Sinks list */
     SPBufferList *entries;
@@ -429,6 +433,9 @@ static int dxgi_init(AVBufferRef **s)
 {
     int err = 0;
     DxgiCtx *ctx = av_mallocz(sizeof(*ctx));
+    if (!ctx)
+        return AVERROR(ENOMEM);
+    ctx->metrics = NULL;
 
     AVBufferRef *ctx_ref = av_buffer_create((uint8_t *)ctx, sizeof(*ctx),
                                             dxgi_uninit, NULL, 0);
@@ -870,13 +877,23 @@ static void *dxgi_capture_thread(void *s)
         }
 
         /* Fill metadata */
-        frame->pts        = av_gettime_relative() - priv->epoch;
+        int64_t ts = av_gettime_relative();
+
+        frame->pts        = ts - priv->epoch;
         frame->opaque_ref = av_buffer_allocz(sizeof(FormatExtraData));
 
         FormatExtraData *fe = (FormatExtraData *)frame->opaque_ref->data;
         fe->time_base       = AV_TIME_BASE_Q;
         fe->avg_frame_rate  = priv->framerate;
         fe->rotation        = priv->rotation;
+
+        if (ctx->metrics) {
+            const tx_metrics_entry metrics[] = {
+                { .key = "pts", .value = frame->pts },
+                { .key = "acquired", .value = ts },
+            };
+            tx_metrics_push(ctx->metrics, metrics, SP_ARRAY_ELEMS(metrics));
+        }
 
         sp_log(entry, SP_LOG_TRACE, "Pushing frame to FIFO, pts = %f (%I64d)\n",
                av_q2d(fe->time_base) * frame->pts, frame->pts);
@@ -986,9 +1003,20 @@ static int dxgi_init_io(AVBufferRef *ctx_ref, AVBufferRef *entry,
     return 0;
 }
 
+static int dxgi_set_metrics(AVBufferRef *buffer, struct tx_metrics *metrics)
+{
+    DxgiCtx *ctx = (DxgiCtx *)buffer->data;
+
+    assert(!metrics || metrics->cb);
+    ctx->metrics = metrics;
+
+    return 0;
+}
+
 const IOSysAPI src_dxgi = {
     .name      = "dxgi",
     .init_sys  = dxgi_init,
+    .set_metrics = dxgi_set_metrics,
     .init_io   = dxgi_init_io,
     .ref_entry = dxgi_ref_entry,
     .ctrl      = dxgi_ctrl,

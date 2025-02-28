@@ -29,6 +29,8 @@
 #include <libtxproto/utils.h>
 #include <libtxproto/log.h>
 
+struct tx_metrics;
+
 typedef const struct IOSysAPI {
     /**
      * API name
@@ -39,6 +41,8 @@ typedef const struct IOSysAPI {
      * Initialize the API
      */
     int (*init_sys)(AVBufferRef **ctx);
+
+    int (*set_metrics)(AVBufferRef *ctx, struct tx_metrics *metrics);
 
     /**
      * Initialize a source/sink, but don't start it.
