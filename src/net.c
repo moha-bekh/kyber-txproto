@@ -64,7 +64,7 @@ net_perror(const char *s) {
 #ifdef _WIN32
     int error = WSAGetLastError();
     char *wsa_message;
-    FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
+    FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM,
             NULL, error, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
             (char *) &wsa_message, 0, NULL);
     // no explicit '\n', wsa_message already contains a trailing '\n'
