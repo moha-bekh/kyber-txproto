@@ -209,6 +209,15 @@ if have_wasapi
     conf.set('HAVE_WASAPI', 1)
 endif
 
+# NVFBC
+libnvcodec = dependency('ffnvcodec', required: false)
+have_nvfbc = libnvcodec.found() and have_xcb
+if have_nvfbc
+    sources += 'iosys_nvfbc.c'
+    conf.set('HAVE_NVFBC', 1)
+    dependencies += libnvcodec
+endif
+
 link_args = []
 
 if host_machine.system() == 'windows'
@@ -282,8 +291,15 @@ summary({
     'wayland': have_wayland,
     'dxgi': have_dxgi,
     'wasapi': have_wasapi,
+    'nvfbc': have_nvfbc,
     'libavdevice': libavdevice.found(),
 }, section: 'I/O systems', bool_yn: true)
+
+summary({
+    'nvfbc': have_nvfbc,
+    'nvcodec': libnvcodec.found(),
+    'xcb': have_xcb,
+}, section: 'NVFBC capture', bool_yn: true)
 
 test('test1', cli, args : ['-V', 'trace', '-s', '../test/transcode_audio.lua', '-r', 'io,package', '/tmp/testa.flac', '/tmp/resulta.flac'], env : ['LUA_PATH=../test/common.lua'])
 #test('test1', cli, args : ['-V', 'trace', '-s', '../test/transcode_video.lua', '-r', 'io,package', '/tmp/testv.mkv', '/tmp/resultv.mkv'], env : ['LUA_PATH=../test/common.lua'])

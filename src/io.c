@@ -126,15 +126,34 @@ AVBufferRef *sp_io_create(TXMainContext *ctx,
 {
     int i = 0;
     AVBufferRef *entry = NULL;
-    for (; i < sp_compiled_apis_len; i++)
-        if (ctx->io_api_ctx[i] &&
-            (entry = sp_compiled_apis[i]->ref_entry(ctx->io_api_ctx[i], identifier)))
+
+    /* Check if a specific grab backend is requested */
+    AVDictionaryEntry *backend_entry = av_dict_get(opts, "grab_backend", NULL, 0);
+    const char *requested_backend = backend_entry ? backend_entry->value : NULL;
+
+    for (; i < sp_compiled_apis_len; i++) {
+        if (!ctx->io_api_ctx[i])
+            continue;
+
+        if (requested_backend &&
+            strcmp(sp_compiled_apis[i]->name, requested_backend) != 0) {
+            continue;
+        }
+
+        if ((entry = sp_compiled_apis[i]->ref_entry(ctx->io_api_ctx[i], identifier)))
             break;
 
     if (!entry) {
-        sp_log(ctx, SP_LOG_ERROR, "Entry 0x%X not found!", identifier);
+        if (requested_backend)
+            sp_log(ctx, SP_LOG_ERROR, "Entry 0x%X not found with backend '%s'!\n",
+                   identifier, requested_backend);
+        else
+            sp_log(ctx, SP_LOG_ERROR, "Entry 0x%X not found!\n", identifier);
         return NULL;
     }
+
+    sp_log(ctx, SP_LOG_DEBUG, "Using '%s' backend for entry 0x%X\n",
+           sp_compiled_apis[i]->name, identifier);
 
     int err = sp_compiled_apis[i]->init_io(ctx->io_api_ctx[i], entry, opts);
     if (err < 0) {

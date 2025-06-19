@@ -87,6 +87,10 @@ extern const IOSysAPI src_dxgi;
 extern const IOSysAPI src_wasapi;
 #endif
 
+#ifdef HAVE_NVFBC
+extern const IOSysAPI src_nvfbc;
+#endif
+
 const IOSysAPI *sp_compiled_apis[] = {
 #ifdef HAVE_PULSEAUDIO
     &src_pulse,
@@ -102,6 +106,9 @@ const IOSysAPI *sp_compiled_apis[] = {
 #endif
 #ifdef HAVE_WASAPI
     &src_wasapi,
+#endif
+#ifdef HAVE_NVFBC
+    &src_nvfbc,
 #endif
 };
 
