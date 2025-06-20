@@ -604,6 +604,7 @@ static int fill_entry(WasapiCtx *ctx, IOSysEntry *entry, IMMDevice *dev, uint32_
 
     entry->is_default = entry->identifier == default_id;
 
+    entry->channels = pwf->nChannels;
     entry->sample_rate = pwf->nSamplesPerSec;
     entry->volume = 1.0;
     entry->sample_fmt = format;
