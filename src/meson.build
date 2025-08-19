@@ -219,6 +219,37 @@ if have_nvfbc
     dependencies += libnvcodec
 endif
 
+# DRM
+libdrm = dependency('libdrm', required: false)
+libcap = dependency('libcap', required: false)
+libgbm = dependency('gbm', required: false)
+libegl = dependency('egl', required: false)
+libopengl = dependency('GL', required: false)
+
+libva = dependency('libva', required: false)
+libva_drm = dependency('libva-drm', required: false)
+
+have_drm = libdrm.found() and libcap.found() and libgbm.found() and libegl.found() and libopengl.found()
+have_vaapi_drm = libva.found() and libva_drm.found()
+if have_drm
+    dependencies += libdrm
+    dependencies += libcap
+    dependencies += libgbm
+    dependencies += libegl
+    dependencies += libopengl
+    if have_vaapi_drm
+        dependencies += libva
+        dependencies += libva_drm
+        conf.set('HAVE_VAAPI_DRM', 1)
+    endif
+    sources += [
+        'iosys_drm.c',
+        'iosys_drm_wrapper.c',
+        'iosys_drm_gl.c',
+    ]
+    conf.set('HAVE_DRM', 1)
+endif
+
 link_args = []
 
 if host_machine.system() == 'windows'
@@ -292,9 +323,21 @@ summary({
     'wayland': have_wayland,
     'dxgi': have_dxgi,
     'wasapi': have_wasapi,
+    'drm': have_drm,
     'nvfbc': have_nvfbc,
     'libavdevice': libavdevice.found(),
 }, section: 'I/O systems', bool_yn: true)
+
+summary({
+    'drm': have_drm,
+    'libdrm': libdrm.found(),
+    'libcap': libcap.found(),
+    'libgbm': libgbm.found(),
+    'libegl': libegl.found(),
+    'libopengl': libopengl.found(),
+    'libva': libva.found(),
+    'libva-drm': libva_drm.found(),
+}, section: 'DRM capture', bool_yn: true)
 
 summary({
     'nvfbc': have_nvfbc,

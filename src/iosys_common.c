@@ -91,6 +91,11 @@ extern const IOSysAPI src_wasapi;
 extern const IOSysAPI src_nvfbc;
 #endif
 
+#ifdef HAVE_DRM
+extern const IOSysAPI src_drm;
+#endif
+
+
 const IOSysAPI *sp_compiled_apis[] = {
 #ifdef HAVE_PULSEAUDIO
     &src_pulse,
@@ -109,6 +114,9 @@ const IOSysAPI *sp_compiled_apis[] = {
 #endif
 #ifdef HAVE_NVFBC
     &src_nvfbc,
+#endif
+#ifdef HAVE_DRM
+    &src_drm,
 #endif
 };
 
