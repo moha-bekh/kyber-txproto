@@ -177,8 +177,10 @@ static void destroy_entry(void *opaque, uint8_t *data)
     IOSysEntry *entry = (IOSysEntry *)data;
     WaylandIOPriv *priv = (WaylandIOPriv *)entry->api_priv;
 
-    zxdg_output_v1_destroy(priv->xdg_out);
-    wl_output_release(priv->output);
+    if (priv->xdg_out)
+        zxdg_output_v1_destroy(priv->xdg_out);
+    if (priv->output)
+        wl_output_release(priv->output);
     av_free(entry->desc);
 
     sp_class_free(entry);
