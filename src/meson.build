@@ -142,7 +142,7 @@ libxcb = dependency('xcb', version: '>= 1.14', required: get_option('xcb'))
 if libxcb.found()
     libxcb_shm = dependency('xcb-shm', version: '>= 1.14', required: get_option('xcb'))
     libxcb_randr = dependency('xcb-randr', version: '>= 1.14', required: get_option('xcb'))
-    if libxcb_shm.found()
+    if libxcb_shm.found() and libxcb_randr.found()
         dependencies += libxcb
         dependencies += libxcb_shm
         dependencies += libxcb_randr
