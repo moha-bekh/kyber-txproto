@@ -172,6 +172,39 @@ static int log_adapter_info(DxgiCtx *ctx, IDXGIAdapter *adapter,
     return 0;
 }
 
+static void log_all_adapters(DxgiCtx *ctx)
+{
+    IDXGIAdapter *pAdapter = NULL;
+    IDXGIFactory *pFactory = NULL;
+    HRESULT hr;
+
+    hr = IDXGIAdapter_GetParent(ctx->dxgi_adapter, &IID_IDXGIFactory, (void**)&pFactory);
+    if (FAILED(hr)) {
+        sp_log(ctx, SP_LOG_ERROR, "IDXGIAdapter_GetParent() failed: 0x%lX\n", hr);
+        return;
+    }
+
+    sp_log(ctx, SP_LOG_INFO, "Available DXGI Adapters:\n");
+
+    for (UINT i = 0;; i++) {
+        hr = IDXGIFactory_EnumAdapters(pFactory, i, &pAdapter);
+        if (hr == DXGI_ERROR_NOT_FOUND) {
+            break;
+        }
+        if (FAILED(hr)) {
+            sp_log(ctx, SP_LOG_ERROR, "IDXGIFactory_EnumAdapters() failed: 0x%lX\n", hr);
+            break;
+        }
+
+        log_adapter_info(ctx, pAdapter, "Found adapter: ");
+
+        IDXGIAdapter_Release(pAdapter);
+        pAdapter = NULL;
+    }
+
+    IDXGIFactory_Release(pFactory);
+}
+
 static void close_d3ddevice(DxgiCtx *ctx)
 {
     if (ctx->dxgi_adapter) {
@@ -275,6 +308,7 @@ static int open_d3ddevice(DxgiCtx *ctx)
     }
 
     /* Log adapter information */
+    log_all_adapters(ctx);
     log_adapter_info(ctx, ctx->dxgi_adapter, "Using adapter: ");
 
     return 0;
