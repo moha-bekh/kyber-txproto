@@ -148,6 +148,30 @@ static SPRotation convert_rotation(DXGI_MODE_ROTATION dxgi_rotation)
     }
 }
 
+static int log_adapter_info(DxgiCtx *ctx, IDXGIAdapter *adapter,
+                            const char *prefix)
+{
+    DXGI_ADAPTER_DESC adapter_desc;
+    HRESULT hr = IDXGIAdapter_GetDesc(adapter, &adapter_desc);
+    if (FAILED(hr)) {
+        sp_log(ctx, SP_LOG_ERROR, "%sIDXGIAdapter_GetDesc() failed: 0x%lX\n", prefix, hr);
+        return AVERROR_EXTERNAL;
+    }
+
+    char adapter_name[512];
+    size_t converted;
+    errno_t err = wcstombs_s(&converted, adapter_name, sizeof(adapter_name),
+                             adapter_desc.Description, _TRUNCATE);
+    if (err != 0 && err != STRUNCATE) {
+        sp_log(ctx, SP_LOG_WARN, "%sAdapter name conversion failed (error: %d)\n", prefix, err);
+        return AVERROR_EXTERNAL;
+    }
+    
+    sp_log(ctx, SP_LOG_INFO, "%s%s (VendorId: 0x%04X, DeviceId: 0x%04X)\n",
+           prefix, adapter_name, adapter_desc.VendorId, adapter_desc.DeviceId);
+    return 0;
+}
+
 static void close_d3ddevice(DxgiCtx *ctx)
 {
     if (ctx->dxgi_adapter) {
@@ -249,6 +273,9 @@ static int open_d3ddevice(DxgiCtx *ctx)
         sp_log(ctx, SP_LOG_ERROR, "IDXGIDevice_GetParent() failed: 0x%lX\n", hr);
         goto fail;
     }
+
+    /* Log adapter information */
+    log_adapter_info(ctx, ctx->dxgi_adapter, "Using adapter: ");
 
     return 0;
 
