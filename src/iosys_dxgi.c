@@ -795,7 +795,7 @@ static void *dxgi_capture_thread(void *s)
 
     sp_set_thread_name_self(sp_class_get_name(entry));
     sp_eventlist_dispatch(entry, entry->events, SP_EVENT_ON_CONFIG | SP_EVENT_ON_INIT, NULL);
-
+    SetThreadExecutionState(ES_DISPLAY_REQUIRED | ES_SYSTEM_REQUIRED | ES_CONTINUOUS);
     dxgi_output = get_dxgi_output(ctx, entry);
     if (!dxgi_output) {
         sp_log(ctx, SP_LOG_ERROR, "get_dxgi_output() failed\n");
@@ -991,6 +991,7 @@ static void *dxgi_capture_thread(void *s)
     }
 
 fail:
+    SetThreadExecutionState(ES_CONTINUOUS);
     av_frame_free(&frame);
 
     stop_capture(priv);
