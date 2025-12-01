@@ -438,6 +438,11 @@ static int update_entries(DxgiCtx *ctx)
                                                 destroy_entry, NULL, 0);
 
             sp_bufferlist_append_noref(ctx->entries, buf);
+            sp_eventlist_dispatch(entry, ctx->events,
+                        SP_EVENT_ON_CHANGE |
+                        SP_EVENT_TYPE_SOURCE |
+                        SP_EVENT_TYPE_SINK,
+                        entry);
         } else {
             if (change) {
                 sp_log(ctx, SP_LOG_INFO, "DXGI: An output has changed\n");
