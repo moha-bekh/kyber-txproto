@@ -42,6 +42,18 @@
 #include "ctrl_template.h"
 
 /**
+* This code uses DXGI 1.1:
+ * > Mixing use of DXGI 1.0 and DXGI 1.1 in the same process is not supported.
+ * > Mixing DXGI object instances from different factories in the same process also
+ * > is not supported. Therefore, when you use DirectX 11, any explicit use of the
+ * > DXGI interfaces uses a IDXGIFactory1 created by the CreateDXGIFactory1 entry-point
+ * > in "DXGI.DLL" to ensure the application is always using DXGI 1.1.
+ * Ref: https://learn.microsoft.com/en-us/windows/win32/direct3darticles/dxgi-best-practices#dxgi-11
+ *
+ * Note: ctx->dxgi_adapter is never updated after initialization.
+ * update_entries() doesn't update it either.
+ * Therefore dxgi_capture_thread cannot capture outputs added after init.
+ *
  * Limitation of the implementation if txproto is runned as a standard user:
  * Secure Desktop (UAC and Ctrl+Alt+Del for example) can't be accessed without
  * some security tweaks. txproto won't be able to acquire new frames in this
@@ -84,7 +96,7 @@ typedef struct DxgiCtx {
     ID3D11Device *d3d11_device;
     IUnknown *d3d11_device_base;
     ID3D11DeviceContext *d3d11_device_ctx;
-    IDXGIAdapter *dxgi_adapter;
+    IDXGIAdapter1 *dxgi_adapter;
 
     atomic_int quit;
     pthread_t source_update;
@@ -148,11 +160,11 @@ static SPRotation convert_rotation(DXGI_MODE_ROTATION dxgi_rotation)
     }
 }
 
-static int log_adapter_info(DxgiCtx *ctx, IDXGIAdapter *adapter,
+static int log_adapter_info(DxgiCtx *ctx, IDXGIAdapter1 *adapter,
                             const char *prefix)
 {
     DXGI_ADAPTER_DESC adapter_desc;
-    HRESULT hr = IDXGIAdapter_GetDesc(adapter, &adapter_desc);
+    HRESULT hr = IDXGIAdapter1_GetDesc(adapter, &adapter_desc);
     if (FAILED(hr)) {
         sp_log(ctx, SP_LOG_ERROR, "%sIDXGIAdapter_GetDesc() failed: 0x%lX\n", prefix, hr);
         return AVERROR_EXTERNAL;
@@ -174,41 +186,41 @@ static int log_adapter_info(DxgiCtx *ctx, IDXGIAdapter *adapter,
 
 static void log_all_adapters(DxgiCtx *ctx)
 {
-    IDXGIAdapter *pAdapter = NULL;
-    IDXGIFactory *pFactory = NULL;
+    IDXGIAdapter1 *pAdapter = NULL;
+    IDXGIFactory1 *pFactory = NULL;
     HRESULT hr;
 
-    hr = IDXGIAdapter_GetParent(ctx->dxgi_adapter, &IID_IDXGIFactory, (void**)&pFactory);
+    hr = IDXGIAdapter1_GetParent(ctx->dxgi_adapter, &IID_IDXGIFactory1, (void**)&pFactory);
     if (FAILED(hr)) {
-        sp_log(ctx, SP_LOG_ERROR, "IDXGIAdapter_GetParent() failed: 0x%lX\n", hr);
+        sp_log(ctx, SP_LOG_ERROR, "IDXGIAdapter1_GetParent() failed: 0x%lX\n", hr);
         return;
     }
 
     sp_log(ctx, SP_LOG_INFO, "Available DXGI Adapters:\n");
 
     for (UINT i = 0;; i++) {
-        hr = IDXGIFactory_EnumAdapters(pFactory, i, &pAdapter);
+        hr = IDXGIFactory1_EnumAdapters1(pFactory, i, &pAdapter);
         if (hr == DXGI_ERROR_NOT_FOUND) {
             break;
         }
         if (FAILED(hr)) {
-            sp_log(ctx, SP_LOG_ERROR, "IDXGIFactory_EnumAdapters() failed: 0x%lX\n", hr);
+            sp_log(ctx, SP_LOG_ERROR, "IDXGIFactory1_EnumAdapters1() failed: 0x%lX\n", hr);
             break;
         }
 
         log_adapter_info(ctx, pAdapter, "Found adapter: ");
 
-        IDXGIAdapter_Release(pAdapter);
+        IDXGIAdapter1_Release(pAdapter);
         pAdapter = NULL;
     }
 
-    IDXGIFactory_Release(pFactory);
+    IDXGIFactory1_Release(pFactory);
 }
 
 static void close_d3ddevice(DxgiCtx *ctx)
 {
     if (ctx->dxgi_adapter) {
-        IDXGIAdapter_Release(ctx->dxgi_adapter);
+        IDXGIAdapter1_Release(ctx->dxgi_adapter);
         ctx->dxgi_adapter = NULL;
     }
 
@@ -299,7 +311,7 @@ static int open_d3ddevice(DxgiCtx *ctx)
     }
 
     hr = IDXGIDevice_GetParent(dxgi_device,
-                               &IID_IDXGIAdapter,
+                               &IID_IDXGIAdapter1,
                                (void **)&ctx->dxgi_adapter);
     IDXGIDevice_Release(dxgi_device);
     if (FAILED(hr)) {
@@ -337,10 +349,10 @@ static int update_entries(DxgiCtx *ctx)
         int new_entry = 0;
 
         IDXGIOutput *output;
-        hr = IDXGIAdapter_EnumOutputs(ctx->dxgi_adapter, i, &output);
+        hr = IDXGIAdapter1_EnumOutputs(ctx->dxgi_adapter, i, &output);
         if (FAILED(hr)) {
             if (hr != DXGI_ERROR_NOT_FOUND)
-                sp_log(ctx, SP_LOG_ERROR, "IDXGIAdapter_EnumOutputs() failed: 0x%lX\n", hr);
+                sp_log(ctx, SP_LOG_ERROR, "IDXGIAdapter1_EnumOutputs() failed: 0x%lX\n", hr);
 
             break;
         }
@@ -550,10 +562,10 @@ static IDXGIOutput1 *get_dxgi_output(DxgiCtx *ctx, IOSysEntry *entry)
 
     for (UINT i = 0;; i++) {
         IDXGIOutput *output;
-        hr = IDXGIAdapter_EnumOutputs(ctx->dxgi_adapter, i, &output);
+        hr = IDXGIAdapter1_EnumOutputs(ctx->dxgi_adapter, i, &output);
         if (FAILED(hr)) {
             if (hr != DXGI_ERROR_NOT_FOUND)
-                sp_log(ctx, SP_LOG_ERROR, "IDXGIAdapter_EnumOutputs() failed: 0x%lX\n", hr);
+                sp_log(ctx, SP_LOG_ERROR, "IDXGIAdapter1_EnumOutputs() failed: 0x%lX\n", hr);
 
             return NULL;
         }
