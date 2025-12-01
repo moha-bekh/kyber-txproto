@@ -341,7 +341,23 @@ static void destroy_entry(void *opaque, uint8_t *data)
 
 static int update_entries(DxgiCtx *ctx)
 {
+    sp_log(ctx, SP_LOG_TRACE, "DXGI: Update output list\n");
     HRESULT hr;
+    IDXGIFactory1 *factory = NULL;
+    IDXGIAdapter1 *adapter = NULL;
+
+    /* Create new factory since adapters and monitors list are cached */
+    hr = CreateDXGIFactory1(&IID_IDXGIFactory1, (void **)&factory);
+    if (FAILED(hr)) {
+        sp_log(ctx, SP_LOG_ERROR, "CreateDXGIFactory1() failed: 0x%lX\n", hr);
+        return AVERROR_EXTERNAL;
+    }
+    hr = IDXGIFactory1_EnumAdapters1(factory, 0, &adapter);
+    if (FAILED(hr)) {
+        sp_log(ctx, SP_LOG_ERROR, "IDXGIFactory1_EnumAdapters1() failed: 0x%lX\n", hr);
+        IDXGIFactory1_Release(factory);
+        return AVERROR_EXTERNAL;
+    }
 
     for (UINT i = 0;; i++) {
         IOSysEntry *entry = NULL;
@@ -349,7 +365,7 @@ static int update_entries(DxgiCtx *ctx)
         int new_entry = 0;
 
         IDXGIOutput *output;
-        hr = IDXGIAdapter1_EnumOutputs(ctx->dxgi_adapter, i, &output);
+        hr = IDXGIAdapter1_EnumOutputs(adapter, i, &output);
         if (FAILED(hr)) {
             if (hr != DXGI_ERROR_NOT_FOUND)
                 sp_log(ctx, SP_LOG_ERROR, "IDXGIAdapter1_EnumOutputs() failed: 0x%lX\n", hr);
@@ -363,6 +379,8 @@ static int update_entries(DxgiCtx *ctx)
             sp_log(ctx, SP_LOG_ERROR, "IDXGIOutput_GetDesc() failed: 0x%lX\n", hr);
 
             IDXGIOutput_Release(output);
+            IDXGIAdapter1_Release(adapter);
+            IDXGIFactory1_Release(factory);
             return AVERROR_EXTERNAL;
         }
 
@@ -370,6 +388,7 @@ static int update_entries(DxgiCtx *ctx)
         wcstombs(name, desc.DeviceName, sizeof(name));
         uint32_t id = gen_identifier(name);
 
+        /* Check if this monitor already exists */
         AVBufferRef *entry_ref = sp_bufferlist_ref(ctx->entries,
                                                    sp_bufferlist_iosysentry_by_id,
                                                    &id);
@@ -414,12 +433,14 @@ static int update_entries(DxgiCtx *ctx)
         entry->is_default = i == 0;
 
         if (new_entry) {
+            sp_log(ctx, SP_LOG_INFO, "DXGI: New output registered\n");
             AVBufferRef *buf = av_buffer_create((uint8_t *)entry, sizeof(*entry),
                                                 destroy_entry, NULL, 0);
 
             sp_bufferlist_append_noref(ctx->entries, buf);
         } else {
             if (change) {
+                sp_log(ctx, SP_LOG_INFO, "DXGI: An output has changed\n");
                 sp_eventlist_dispatch(entry, ctx->events,
                                       SP_EVENT_ON_CHANGE |
                                       SP_EVENT_TYPE_SOURCE |
@@ -433,6 +454,8 @@ static int update_entries(DxgiCtx *ctx)
         output = NULL;
     }
 
+    IDXGIAdapter1_Release(adapter);
+    IDXGIFactory1_Release(factory);
     return 0;
 }
 
