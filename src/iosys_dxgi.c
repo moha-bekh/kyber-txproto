@@ -339,23 +339,32 @@ static void destroy_entry(void *opaque, uint8_t *data)
     av_free(entry);
 }
 
+static AVBufferRef *find_unplugged_iosysentry(AVBufferRef *entry, void *opaque)
+{
+    IOSysEntry *e = (IOSysEntry *)entry->data;
+    return e->is_unplugged ? entry : NULL;
+}
+
 static int update_entries(DxgiCtx *ctx)
 {
     sp_log(ctx, SP_LOG_TRACE, "DXGI: Update output list\n");
     HRESULT hr;
     IDXGIFactory1 *factory = NULL;
     IDXGIAdapter1 *adapter = NULL;
+    SPBufferList *current_monitors = sp_bufferlist_new();
 
     /* Create new factory since adapters and monitors list are cached */
     hr = CreateDXGIFactory1(&IID_IDXGIFactory1, (void **)&factory);
     if (FAILED(hr)) {
         sp_log(ctx, SP_LOG_ERROR, "CreateDXGIFactory1() failed: 0x%lX\n", hr);
+        sp_bufferlist_free(&current_monitors);
         return AVERROR_EXTERNAL;
     }
     hr = IDXGIFactory1_EnumAdapters1(factory, 0, &adapter);
     if (FAILED(hr)) {
         sp_log(ctx, SP_LOG_ERROR, "IDXGIFactory1_EnumAdapters1() failed: 0x%lX\n", hr);
         IDXGIFactory1_Release(factory);
+        sp_bufferlist_free(&current_monitors);
         return AVERROR_EXTERNAL;
     }
 
@@ -381,6 +390,7 @@ static int update_entries(DxgiCtx *ctx)
             IDXGIOutput_Release(output);
             IDXGIAdapter1_Release(adapter);
             IDXGIFactory1_Release(factory);
+            sp_bufferlist_free(&current_monitors);
             return AVERROR_EXTERNAL;
         }
 
@@ -439,6 +449,7 @@ static int update_entries(DxgiCtx *ctx)
                                                 destroy_entry, NULL, 0);
 
             sp_bufferlist_append_noref(ctx->entries, buf);
+            sp_bufferlist_append(current_monitors, buf);
             sp_eventlist_dispatch(entry, ctx->events,
                         SP_EVENT_ON_CHANGE |
                         SP_EVENT_TYPE_SOURCE |
@@ -453,12 +464,46 @@ static int update_entries(DxgiCtx *ctx)
                                       SP_EVENT_TYPE_SINK,
                                       entry);
             }
+            sp_bufferlist_append(current_monitors, entry_ref);
             av_buffer_unref(&entry_ref);
         }
 
         IDXGIOutput_Release(output);
         output = NULL;
     }
+
+
+    /* Mark entries that are no longer present */
+    AVBufferRef *entry_ref;
+    while ((entry_ref = sp_bufferlist_iter_ref(ctx->entries))) {
+        IOSysEntry *entry = (IOSysEntry *)entry_ref->data;
+
+        AVBufferRef *found = sp_bufferlist_ref(current_monitors,
+                                        sp_bufferlist_iosysentry_by_id,
+                                        &entry->identifier);
+
+        if (!found) {
+            sp_log(ctx, SP_LOG_INFO, "DXGI: Output removed!\n");
+            entry->is_unplugged = 1;
+
+            sp_eventlist_dispatch(entry, ctx->events,
+                                  SP_EVENT_ON_CHANGE |
+                                  SP_EVENT_TYPE_SOURCE |
+                                  SP_EVENT_TYPE_SINK,
+                                  entry);
+        } else {
+            av_buffer_unref(&found);
+        }
+
+        av_buffer_unref(&entry_ref);
+    }
+
+    /* Remove marked entries */
+    while ((entry_ref = sp_bufferlist_pop(ctx->entries, find_unplugged_iosysentry, NULL))) {
+        av_buffer_unref(&entry_ref);
+    }
+
+    sp_bufferlist_free(&current_monitors);
 
     IDXGIAdapter1_Release(adapter);
     IDXGIFactory1_Release(factory);
