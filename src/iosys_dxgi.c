@@ -431,6 +431,7 @@ static int update_entries(DxgiCtx *ctx)
         entry->height = height;
         entry->rotation = rotation;
         entry->is_default = i == 0;
+        entry->is_unplugged = 0;
 
         if (new_entry) {
             sp_log(ctx, SP_LOG_INFO, "DXGI: New output registered\n");

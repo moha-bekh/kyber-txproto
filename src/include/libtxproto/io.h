@@ -46,6 +46,7 @@ typedef struct IOSysEntry {
     uint32_t identifier;
     uint32_t api_id;
     int is_default;
+    int is_unplugged;
 
     IOSysAPI *api;
     AVBufferRef *api_ctx;
