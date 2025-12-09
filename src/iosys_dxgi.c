@@ -581,7 +581,7 @@ fail:
 static AVBufferRef *dxgi_ref_entry(AVBufferRef *ctx_ref, uint32_t identifier)
 {
     DxgiCtx *ctx = (DxgiCtx *)ctx_ref->data;
-    return sp_bufferlist_pop(ctx->entries, sp_bufferlist_iosysentry_by_id, &identifier);
+    return sp_bufferlist_ref(ctx->entries, sp_bufferlist_iosysentry_by_id, &identifier);
 }
 
 static IDXGIOutput1 *get_dxgi_output(DxgiCtx *ctx, IOSysEntry *entry)
