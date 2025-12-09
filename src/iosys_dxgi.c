@@ -491,6 +491,12 @@ static int update_entries(DxgiCtx *ctx)
                                   SP_EVENT_TYPE_SOURCE |
                                   SP_EVENT_TYPE_SINK,
                                   entry);
+
+            // Stop capture
+            DxgiCapture *priv = entry->io_priv;
+            if (priv) {
+                atomic_store(&priv->quit, 1);
+            }
         } else {
             av_buffer_unref(&found);
         }
