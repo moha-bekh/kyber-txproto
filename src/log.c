@@ -174,7 +174,7 @@ static inline const char *get_class_color(SPClass *class)
         return "\033[38;5;129m";
     else if (class->type & (SP_TYPE_AUDIO_BIDIR | SP_TYPE_VIDEO_BIDIR))
         return "\033[035m";
-    else if (class->type & (SP_TYPE_FILTER))
+    else if (class->type & (SP_TYPE_FILTER | SP_TYPE_FILTER_PROC))
         return "\033[38;5;99m";
     else if (class->type & (SP_TYPE_CODEC))
         return "\033[38;5;199m";
@@ -211,6 +211,7 @@ static inline const char *type_to_string(enum SPType type)
     case SP_TYPE_CLOCK_SINK:   return "clock sink";
 
     case SP_TYPE_FILTER:       return "filter";
+    case SP_TYPE_FILTER_PROC:  return "filter_proc";
 
     case SP_TYPE_ENCODER:      return "encoder";
     case SP_TYPE_DECODER:      return "decoder";

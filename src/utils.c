@@ -1031,6 +1031,7 @@ SPEventType sp_class_to_event_type(void *ctx)
         return SP_EVENT_TYPE_SINK | SP_EVENT_TYPE_SOURCE;
 
     case SP_TYPE_FILTER:
+    case SP_TYPE_FILTER_PROC:
         return SP_EVENT_TYPE_FILTER;
 
     case SP_TYPE_BSF:

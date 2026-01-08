@@ -22,6 +22,7 @@
 #include <libtxproto/demux.h>
 #include <libtxproto/encode.h>
 #include <libtxproto/filter.h>
+#include <libtxproto/filter_proc.h>
 #include <libtxproto/link.h>
 #include <libtxproto/mux.h>
 #include "packet_sink.h"
@@ -95,6 +96,8 @@ static SPBufferList *sp_ctx_get_events_list(void *ctx)
         return ((PacketSinkContext *)ctx)->events;
     case SP_TYPE_FILTER:
         return ((FilterContext *)ctx)->events;
+    case SP_TYPE_FILTER_PROC:
+        return ((FilterProcContext *)ctx)->events;
     case SP_TYPE_ENCODER:
         return ((EncodingContext *)ctx)->events;
     case SP_TYPE_DECODER:
@@ -107,7 +110,7 @@ static SPBufferList *sp_ctx_get_events_list(void *ctx)
     return NULL;
 }
 
-static AVBufferRef *sp_ctx_get_fifo(void *ctx, int out)
+static AVBufferRef *sp_ctx_get_fifo(void *ctx, int out, const char *name)
 {
     enum SPType type = sp_class_get_type(ctx);
     switch (type) {
@@ -131,6 +134,11 @@ static AVBufferRef *sp_ctx_get_fifo(void *ctx, int out)
         return ((PacketSinkContext *)ctx)->src_packets;
     case SP_TYPE_FILTER:
         return NULL;
+    case SP_TYPE_FILTER_PROC:
+        if (out)
+            return sp_filter_proc_get_output_fifo((FilterProcContext *)ctx, name);
+        else
+            return sp_filter_proc_get_input_fifo((FilterProcContext *)ctx, name);
     case SP_TYPE_ENCODER:
         if (out)
             return ((EncodingContext *)ctx)->dst_packets;
@@ -173,20 +181,23 @@ static int link_fn(AVBufferRef *event_ref, void *callback_ctx, void *dst_ctx,
     enum SPType s_type = sp_class_get_type(src_ctx);
     enum SPType d_type = sp_class_get_type(dst_ctx);
 
-    AVBufferRef *src_fifo = sp_ctx_get_fifo(src_ctx, 1);
-    AVBufferRef *dst_fifo = sp_ctx_get_fifo(dst_ctx, 0);
+    int s_filter = s_type & (SP_TYPE_FILTER | SP_TYPE_FILTER_PROC);
+    int d_filter = d_type & (SP_TYPE_FILTER | SP_TYPE_FILTER_PROC);
+
+    AVBufferRef *src_fifo = sp_ctx_get_fifo(src_ctx, 1, s_filter ? cb_ctx->src_filt_pad : NULL);
+    AVBufferRef *dst_fifo = sp_ctx_get_fifo(dst_ctx, 0, d_filter ? cb_ctx->dst_filt_pad : NULL);
 
     sp_log(dst_ctx, SP_LOG_VERBOSE, "Linking %s \"%s\"%s%s%s to "
                                             "%s \"%s\"%s%s%s\n",
            sp_class_type_string(src_ctx), sp_class_get_name(src_ctx),
-           s_type != SP_TYPE_FILTER ? "" : " (pad: ",
-           s_type != SP_TYPE_FILTER ? "" : (cb_ctx->src_filt_pad ? cb_ctx->src_filt_pad : "default"),
-           s_type != SP_TYPE_FILTER ? "" : ")",
+           !s_filter ? "" : " (pad: ",
+           !s_filter ? "" : (cb_ctx->src_filt_pad ? cb_ctx->src_filt_pad : "default"),
+           !s_filter ? "" : ")",
 
            sp_class_type_string(dst_ctx), sp_class_get_name(dst_ctx),
-           d_type != SP_TYPE_FILTER ? "" : " (pad: ",
-           d_type != SP_TYPE_FILTER ? "" : (cb_ctx->dst_filt_pad ? cb_ctx->dst_filt_pad : "default"),
-           d_type != SP_TYPE_FILTER ? "" : ")");
+           !d_filter ? "" : " (pad: ",
+           !d_filter ? "" : (cb_ctx->dst_filt_pad ? cb_ctx->dst_filt_pad : "default"),
+           !d_filter ? "" : ")");
 
     if ((s_type == SP_TYPE_FILTER) && (d_type == SP_TYPE_FILTER)) {
         return sp_map_pad_to_pad((FilterContext *)dst_ctx, cb_ctx->dst_filt_pad,
@@ -194,9 +205,29 @@ static int link_fn(AVBufferRef *event_ref, void *callback_ctx, void *dst_ctx,
     } else if (s_type == SP_TYPE_FILTER && (d_type == SP_TYPE_ENCODER)) {
         return sp_map_fifo_to_pad((FilterContext *)src_ctx, dst_fifo,
                                   cb_ctx->src_filt_pad, 1);
+    } else if (s_type == SP_TYPE_FILTER && (d_type == SP_TYPE_FILTER_PROC)) {
+        return sp_map_fifo_to_pad((FilterContext *)src_ctx, dst_fifo,
+                                  cb_ctx->src_filt_pad, 1);
     } else if ((s_type & SP_TYPE_INOUT) && (d_type == SP_TYPE_FILTER)) {
         return sp_map_fifo_to_pad((FilterContext *)dst_ctx, src_fifo,
                                   cb_ctx->dst_filt_pad, 0);
+    } else if ((s_type == SP_TYPE_FILTER_PROC) && (d_type == SP_TYPE_FILTER_PROC)) {
+        sp_assert(dst_fifo && src_fifo);
+
+        return sp_packet_fifo_mirror(dst_fifo, src_fifo);
+    } else if (s_type == SP_TYPE_FILTER_PROC && (d_type == SP_TYPE_ENCODER)) {
+        sp_assert(dst_fifo && src_fifo);
+
+        return sp_packet_fifo_mirror(dst_fifo, src_fifo);
+    } else if (s_type == SP_TYPE_FILTER_PROC && (d_type == SP_TYPE_FILTER)) {
+        sp_assert(!!src_fifo);
+
+        return sp_map_fifo_to_pad((FilterContext *)dst_ctx, src_fifo,
+                                  cb_ctx->dst_filt_pad, 0);
+    } else if ((s_type & SP_TYPE_INOUT) && (d_type == SP_TYPE_FILTER_PROC)) {
+        sp_assert(dst_fifo && src_fifo);
+
+        return sp_frame_fifo_mirror(dst_fifo, src_fifo);
     } else if ((s_type == SP_TYPE_ENCODER) && (d_type == SP_TYPE_MUXER)) {
         EncodingContext *src_enc_ctx  = src_ctx;
         MuxingContext   *dst_mux_ctx  = dst_ctx;
@@ -237,6 +268,10 @@ static int link_fn(AVBufferRef *event_ref, void *callback_ctx, void *dst_ctx,
 
         return sp_map_fifo_to_pad((FilterContext *)dst_ctx, src_fifo,
                                   cb_ctx->dst_filt_pad, 0);
+    } else if (s_type == SP_TYPE_DECODER && (d_type == SP_TYPE_FILTER_PROC)) {
+        sp_assert(dst_fifo && src_fifo);
+
+        return sp_frame_fifo_mirror(dst_fifo, src_fifo);
     } else if ((s_type & SP_TYPE_INOUT) && (d_type == SP_TYPE_ENCODER)) {
         if (!dst_fifo) {
             sp_log(dst_ctx, SP_LOG_VERBOSE, "Unable to get FIFO from interface, unsupported!\n");
@@ -252,6 +287,15 @@ static int link_fn(AVBufferRef *event_ref, void *callback_ctx, void *dst_ctx,
 
         return sp_map_fifo_to_pad((FilterContext *)src_ctx, dst_fifo,
                                   cb_ctx->src_filt_pad, 1);
+    } else if ((s_type == SP_TYPE_FILTER_PROC) && (d_type == SP_TYPE_INTERFACE)) {
+        if (!dst_fifo) {
+            sp_log(dst_ctx, SP_LOG_VERBOSE, "Unable to get FIFO from interface, unsupported!\n");
+            return AVERROR(EINVAL);
+        }
+
+        sp_assert(dst_fifo && src_fifo);
+
+        return sp_frame_fifo_mirror(dst_fifo, src_fifo);
     } else if ((s_type & SP_TYPE_INOUT) && (d_type == SP_TYPE_INTERFACE)) {
         if (!dst_fifo) {
             sp_log(dst_ctx, SP_LOG_VERBOSE, "Unable to get FIFO from interface, unsupported!\n");
@@ -353,8 +397,27 @@ int sp_generic_link(TXMainContext *ctx,
         dst_filt_pad = av_strdup(dst_pad_name);
         src_ctrl_fn = ((IOSysEntry *)src_ref->data)->ctrl;
         dst_ctrl_fn = sp_filter_ctrl;
-    } else if ((sp_class_get_type(obj1->data) == SP_TYPE_FILTER) &&
-               (sp_class_get_type(obj2->data) == SP_TYPE_FILTER)) {
+    } else if (EITHER(obj1, obj2, SP_TYPE_ENCODER, SP_TYPE_FILTER_PROC)) {
+        src_ref = PICK_REF(obj1, obj2, SP_TYPE_FILTER_PROC);
+        dst_ref = PICK_REF(obj1, obj2, SP_TYPE_ENCODER);
+        src_filt_pad = av_strdup(src_pad_name);
+        src_ctrl_fn = sp_filter_ctrl_proc;
+        dst_ctrl_fn = sp_encoder_ctrl;
+    } else if (EITHER(obj1, obj2, SP_TYPE_DECODER, SP_TYPE_FILTER_PROC)) {
+        src_ref = PICK_REF(obj1, obj2, SP_TYPE_DECODER);
+        dst_ref = PICK_REF(obj1, obj2, SP_TYPE_FILTER_PROC);
+        dst_filt_pad = av_strdup(dst_pad_name);
+        src_ctrl_fn = sp_decoder_ctrl;
+        dst_ctrl_fn = sp_filter_ctrl_proc;
+    } else if (EITHER(obj1, obj2, SP_TYPE_FILTER_PROC, SP_TYPE_VIDEO_SOURCE) ||
+               EITHER(obj1, obj2, SP_TYPE_FILTER_PROC, SP_TYPE_AUDIO_SOURCE)) {
+        src_ref = PICK_REF_INV(obj1, obj2, SP_TYPE_FILTER_PROC);
+        dst_ref = PICK_REF(obj1, obj2, SP_TYPE_FILTER_PROC);
+        dst_filt_pad = av_strdup(dst_pad_name);
+        src_ctrl_fn = ((IOSysEntry *)src_ref->data)->ctrl;
+        dst_ctrl_fn = sp_filter_ctrl_proc;
+    } else if ((sp_class_get_type(obj1->data) & (SP_TYPE_FILTER | SP_TYPE_FILTER_PROC)) &&
+               (sp_class_get_type(obj2->data) & (SP_TYPE_FILTER | SP_TYPE_FILTER_PROC))) {
         /* NOTE: we're unable to determine order for filter to filter connections.
          * Assume that src is 1, dst is 2.
          * The API should be improved to remove such ambiguities. */
@@ -362,8 +425,14 @@ int sp_generic_link(TXMainContext *ctx,
         dst_ref = av_buffer_ref(obj2);
         src_filt_pad = av_strdup(src_pad_name);
         dst_filt_pad = av_strdup(dst_pad_name);
-        src_ctrl_fn = sp_filter_ctrl;
-        dst_ctrl_fn = sp_filter_ctrl;
+        if (sp_class_get_type(obj1->data) == SP_TYPE_FILTER)
+            src_ctrl_fn = sp_filter_ctrl;
+        else
+            src_ctrl_fn = sp_filter_ctrl_proc;
+        if (sp_class_get_type(obj2->data) == SP_TYPE_FILTER)
+            dst_ctrl_fn = sp_filter_ctrl;
+        else
+            dst_ctrl_fn = sp_filter_ctrl_proc;
 #ifdef HAVE_INTERFACE
     } else if (EITHER(obj1, obj2, SP_TYPE_INTERFACE, SP_TYPE_FILTER)) {
         src_ref = PICK_REF(obj1, obj2, SP_TYPE_FILTER);

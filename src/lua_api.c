@@ -34,6 +34,7 @@
 #include <libtxproto/encode.h>
 #include <libtxproto/decode.h>
 #include <libtxproto/filter.h>
+#include <libtxproto/filter_proc.h>
 #include <libtxproto/io.h>
 
 #ifdef HAVE_INTERFACE
@@ -360,6 +361,9 @@ static int lua_generic_schedule(lua_State *L)
         break;
     case SP_TYPE_FILTER:
         fn = sp_filter_ctrl;
+        break;
+    case SP_TYPE_FILTER_PROC:
+        fn = sp_filter_ctrl_proc;
         break;
     case SP_TYPE_AUDIO_SOURCE:
     case SP_TYPE_AUDIO_SINK:
