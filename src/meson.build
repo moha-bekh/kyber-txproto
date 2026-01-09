@@ -17,6 +17,7 @@ sources = [
 
     # Filtering
     'filter.c',
+    'filter_proc.c',
 
     # Encoding
     'encode.c',
@@ -58,6 +59,7 @@ headers = [
     'mux.h',
     'demux.h',
     'filter.h',
+    'filter_proc.h',
     'encode.h',
     'decode.h',
     'log.h',
