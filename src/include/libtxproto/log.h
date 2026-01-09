@@ -48,6 +48,7 @@ enum SPType {
     SP_TYPE_CLOCK_SINK = (1 << 15),
 
     SP_TYPE_FILTER = (1 << 16),
+    SP_TYPE_FILTER_PROC = (1 << 17),
 
     SP_TYPE_ENCODER = (1 << 20),
     SP_TYPE_DECODER = (1 << 21),

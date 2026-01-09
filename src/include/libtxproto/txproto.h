@@ -27,6 +27,7 @@ typedef struct TXMainContext TXMainContext;
 #include <libtxproto/events.h>
 #include <libtxproto/io.h>
 #include <libtxproto/metrics.h>
+#include <libtxproto/filter_proc.h>
 
 TXMainContext *tx_new(void);
 
@@ -84,6 +85,14 @@ AVBufferRef *tx_filtergraph_create(TXMainContext *ctx, const char *graph,
                                    enum AVHWDeviceType hwctx_type,
                                    AVDictionary *init_opts);
 
+AVBufferRef *tx_filter_proc_create(
+    TXMainContext *ctx,
+    const char *name,
+    const FilterProcVtable *vtable,
+    void *init_arg,
+    AVDictionary *init_opts
+);
+
 typedef struct TXLinkOptions {
     int autostart;
     const char *src_pad;
@@ -114,3 +123,10 @@ AVBufferRef *tx_io_register_cb(TXMainContext *ctx, const char **api_list,
 
 AVBufferRef *tx_io_create(TXMainContext *ctx, uint32_t identifier,
                           AVDictionary *opts);
+
+typedef struct TxWatermarkPosition {
+    float x;  // Horizontal position [-1.0 = left, 0.0 = center, 1.0 = right]
+    float y;  // Vertical position [-1.0 = top, 0.0 = center, 1.0 = bottom]
+} TxWatermarkPosition;
+
+AVBufferRef *tx_watermark_filter_create(TXMainContext *ctx, const char *image_path, TxWatermarkPosition position);

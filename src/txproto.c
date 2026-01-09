@@ -10,6 +10,7 @@
 #include <libtxproto/epoch.h>
 #include <libtxproto/events.h>
 #include <libtxproto/filter.h>
+#include <libtxproto/filter_proc.h>
 #include <libtxproto/link.h>
 #include <libtxproto/mux.h>
 #include <libtxproto/txproto_main.h>
@@ -17,6 +18,7 @@
 #include "iosys_common.h"
 #include "packet_sink.h"
 #include "metrics.h"
+#include "watermark.h"
 
 #include "net.h"
 
@@ -431,6 +433,43 @@ err:
     return NULL;
 }
 
+AVBufferRef *tx_filter_proc_create(
+    TXMainContext *ctx,
+    const char *name,
+    const FilterProcVtable *vtable,
+    void *init_arg,
+    AVDictionary *init_opts
+) {
+    int err;
+    AVBufferRef *fctx_ref = sp_filter_alloc_proc();
+
+    err = sp_init_filter_proc(fctx_ref, name, init_arg, vtable);
+    if (err < 0) {
+        sp_log(ctx, SP_LOG_ERROR, "Unable to init filter: %s!\n", av_err2str(err));
+        goto err;
+    }
+
+    if (init_opts) {
+        err = sp_filter_ctrl_proc(fctx_ref,
+                                  SP_EVENT_CTRL_OPTS | SP_EVENT_FLAG_IMMEDIATE,
+                                  init_opts);
+        if (err < 0) {
+            sp_log(ctx, SP_LOG_ERROR, "Unable to set options: %s!\n", av_err2str(err));
+            goto err;
+        }
+    }
+    av_dict_free(&init_opts);
+
+    sp_bufferlist_append_noref(ctx->ext_buf_refs, fctx_ref);
+
+    return fctx_ref;
+
+err:
+    av_dict_free(&init_opts);
+    av_buffer_unref(&fctx_ref);
+    return NULL;
+}
+
 int tx_link(TXMainContext *ctx, AVBufferRef *src, AVBufferRef *dst,
             const TXLinkOptions *options)
 {
@@ -573,4 +612,9 @@ AVBufferRef *tx_io_create(TXMainContext *ctx, uint32_t identifier,
                           AVDictionary *opts)
 {
     return sp_io_create(ctx, identifier, opts);
+}
+
+AVBufferRef *tx_watermark_filter_create(TXMainContext *ctx, const char *image_path, TxWatermarkPosition position)
+{
+    return watermark_filter_create(ctx, image_path, position);
 }
