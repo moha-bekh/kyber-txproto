@@ -86,13 +86,24 @@ if libedit.found()
     features += ', ' + libedit.name() + ' ' + libedit.version()
 endif
 
-# libplacebo + vulkan
-libplacebo = dependency('libplacebo', version: '>= 3.120.0', required: get_option('interface'))
-vulkan = dependency('vulkan', version: '>= 1.1', required: get_option('interface'))
+# libplacebo
+libplacebo = dependency('libplacebo', version: '>= 3.120.0', required: false)
+if libplacebo.found()
+    dependencies += libplacebo
+    sources += 'watermark.c'
+endif
+
+vulkan = dependency('vulkan', version: '>= 1.1', required: false)
+if vulkan.found()
+    dependencies += vulkan
+    conf.set('HAVE_VULKAN', 1)
+    if libplacebo.found()
+        sources += 'watermark_vulkan.c'
+    endif
+endif
+
 have_interface = libplacebo.found() and vulkan.found()
 if have_interface
-    dependencies += libplacebo
-    dependencies += vulkan
     sources += 'interface.c'
     sources += 'interface_common.c'
     sources += 'pl.c'
@@ -106,6 +117,13 @@ if libavdevice.found()
     sources += 'iosys_lavd.c'
     conf.set('HAVE_LAVD', 1)
     features += ', ' + libavdevice.name() + ' ' + libavdevice.version()
+endif
+
+# libswscale
+libswscale = dependency('libswscale', required: true)
+if libswscale.found()
+    dependencies += libswscale
+    features += ', ' + libswscale.name() + ' ' + libswscale.version()
 endif
 
 # Pulseaudio
@@ -177,6 +195,7 @@ if have_dxgi
     sources += 'dxgi_cursor.c'
     sources += 'iosys_dxgi.c'
     conf.set('HAVE_DXGI', 1)
+    conf.set('HAVE_D3D11', 1)
 endif
 
 # WASAPI
