@@ -4,6 +4,7 @@
 #include <libtxproto/io.h>
 
 #include "iosys_common.h"
+#include "libtxproto/log.h"
 
 AVBufferRef *sp_io_alloc(TXMainContext *ctx,
                          const char **api_list,
@@ -31,11 +32,54 @@ AVBufferRef *sp_io_alloc(TXMainContext *ctx,
 
     /* Initialize I/O APIs */
     int initialized_apis = 0, apis_initialized = 0;
+    int nvfbc_available = 0;
+
+    /* First pass: check if nvfbc is already initialized or try to initialize it first */
     for (int i = 0; i < sp_compiled_apis_len; i++) {
+        if (!strcmp(sp_compiled_apis[i]->name, "nvfbc")) {
+            if (ctx->io_api_ctx[i]) {
+                nvfbc_available = 1;
+            } else {
+                int found = 0;
+                for (int j = 0; (api_list && api_list[j]); j++) {
+                    if (!strcmp(api_list[j], "nvfbc")) {
+                        found = 1;
+                        break;
+                    }
+                }
+                if (!api_list || found) {
+                    err = sp_compiled_apis[i]->init_sys(&ctx->io_api_ctx[i]);
+                    if (err == 0) {
+                        nvfbc_available = 1;
+                        initialized_apis++;
+                        apis_initialized++;
+                    } else if (api_list && err != AVERROR(ENOSYS)) {
+                        sp_log(ctx, SP_LOG_ERROR, "Unable to load API \"%s\": %s!",
+                               sp_compiled_apis[i]->name, av_err2str(err));
+                        return NULL;
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    /* Second pass: initialize remaining APIs, skip xcb if nvfbc is available */
+    for (int i = 0; i < sp_compiled_apis_len; i++) {
+        if (!strcmp(sp_compiled_apis[i]->name, "nvfbc"))
+            continue; /* Already handled */
+
         if (ctx->io_api_ctx[i]) {
             initialized_apis++;
             continue;
         }
+
+        /* Skip xcb if nvfbc is available */
+        if (nvfbc_available && !strcmp(sp_compiled_apis[i]->name, "xcb")) {
+            sp_log(ctx, SP_LOG_DEBUG, "Skipping xcb backend (nvfbc available)");
+            continue;
+        }
+
         int found = 0;
         for (int j = 0; (api_list && api_list[j]); j++) {
             if (!strcmp(api_list[j], sp_compiled_apis[i]->name)) {
@@ -131,6 +175,15 @@ AVBufferRef *sp_io_create(TXMainContext *ctx,
     AVDictionaryEntry *backend_entry = av_dict_get(opts, "grab_backend", NULL, 0);
     const char *requested_backend = backend_entry ? backend_entry->value : NULL;
 
+    /* Check if nvfbc is available (initialized) */
+    int nvfbc_available = 0;
+    for (int j = 0; j < sp_compiled_apis_len; j++) {
+        if (ctx->io_api_ctx[j] && strcmp(sp_compiled_apis[j]->name, "nvfbc") == 0) {
+            nvfbc_available = 1;
+            break;
+        }
+    }
+
     for (; i < sp_compiled_apis_len; i++) {
         if (!ctx->io_api_ctx[i])
             continue;
@@ -140,8 +193,14 @@ AVBufferRef *sp_io_create(TXMainContext *ctx,
             continue;
         }
 
+        if (nvfbc_available && strcmp(sp_compiled_apis[i]->name, "xcb") == 0) {
+            sp_log(ctx, SP_LOG_DEBUG, "Skipping xcb backend (nvfbc available)");
+            continue;
+        }
+
         if ((entry = sp_compiled_apis[i]->ref_entry(ctx->io_api_ctx[i], identifier)))
             break;
+    }
 
     if (!entry) {
         if (requested_backend)
@@ -150,6 +209,12 @@ AVBufferRef *sp_io_create(TXMainContext *ctx,
         else
             sp_log(ctx, SP_LOG_ERROR, "Entry 0x%X not found!\n", identifier);
         return NULL;
+    }
+
+    /* Log which backend is being used for video capture */
+    if (requested_backend && strcmp(sp_compiled_apis[i]->name, "nvfbc") == 0) {
+        sp_log(ctx, SP_LOG_INFO, "Using '%s' backend for video capture",
+               sp_compiled_apis[i]->name);
     }
 
     sp_log(ctx, SP_LOG_DEBUG, "Using '%s' backend for entry 0x%X\n",
