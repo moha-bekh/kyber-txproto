@@ -36,7 +36,7 @@ typedef struct WatermarkInitArgs {
     TxWatermarkPosition position;
 } WatermarkInitArgs;
 
-static AVFrame *load_image_as_rgba(FilterProcContext *proc_ctx, const char *path) {
+static AVFrame *load_image(FilterProcContext *proc_ctx, const char *path, int format) {
     AVFrame *out_frame = NULL;
     FILE *f = fopen(path, "rb");
     if (!f) {
@@ -108,11 +108,9 @@ static AVFrame *load_image_as_rgba(FilterProcContext *proc_ctx, const char *path
         goto end;
     }
 
-    // Convert to RGBA
-    enum AVPixelFormat dst_fmt = AV_PIX_FMT_RGBA;
     struct SwsContext *sws = sws_getContext(
         frame->width, frame->height, (enum AVPixelFormat)frame->format,
-        frame->width, frame->height, dst_fmt,
+        frame->width, frame->height, format,
         SWS_BILINEAR, NULL, NULL, NULL
     );
     if (!sws) {
@@ -129,7 +127,7 @@ static AVFrame *load_image_as_rgba(FilterProcContext *proc_ctx, const char *path
 
     out_frame->width = frame->width;
     out_frame->height = frame->height;
-    out_frame->format = dst_fmt;
+    out_frame->format = format;
 
     ret = av_frame_get_buffer(out_frame, 0);
     if (ret < 0) {
@@ -239,7 +237,7 @@ static void pl_log_cb(void *priv, enum pl_log_level level, const char *msg)
     default:            return;
     }
 
-    sp_log(ctx, sp_level, "%s\n", msg);
+    sp_log(ctx, sp_level, "[libplacebo] %s\n", msg);
 }
 
 
@@ -297,6 +295,7 @@ static int proc_process(struct WatermarkContext *ctx)
             goto loop_cleanup;
         }
         in_frame_mapped = true;
+        ctx->wm_frame->color = in_frame.color;
 
         // Render overlay
         update_watermark_crop(ctx, av_frame, &in_frame);
@@ -460,9 +459,11 @@ static int proc_configure(void *raw)
     }
 
     av_frame_free(&frame);
+    const char *fmt_name = av_get_pix_fmt_name(ctx->sw_format);
+    ctx->is_bgr = fmt_name && (strstr(fmt_name, "bgr") || strstr(fmt_name, "BGR"));
 
-    // Load watermark
-    ctx->wm_avframe = load_image_as_rgba(proc_ctx, ctx->image_path);
+    // Always load watermark as RGBA
+    ctx->wm_avframe = load_image(proc_ctx, ctx->image_path, AV_PIX_FMT_RGBA);
     if (!ctx->wm_avframe) {
         sp_log(proc_ctx, SP_LOG_ERROR, "Failed to load watermark image\n");
         goto fail;
@@ -486,6 +487,19 @@ static int proc_configure(void *raw)
         sp_log(proc_ctx, SP_LOG_ERROR, "pl_map_avframe_ex() failed for watermark\n");
         av_free(wm_frame);
         goto fail;
+    }
+
+    // Force RGB color system for the watermark
+    wm_frame->repr.sys = PL_COLOR_SYSTEM_RGB;
+    wm_frame->repr.levels = PL_COLOR_LEVELS_FULL;
+
+    // Workaround for BGR video formats:
+    // libplacebo blends by channel name (R->R, G->G, B->B), not by memory offset.
+    // Video BGR has mapping B=0, R=2, but watermark RGBA has R=0, B=2.
+    // Fix: tell libplacebo watermark index 0 is B so it writes to video B (index 0).
+    if (ctx->is_bgr) {
+        wm_frame->planes[0].component_mapping[0] = PL_CHANNEL_B;
+        wm_frame->planes[0].component_mapping[2] = PL_CHANNEL_R;
     }
 
     ctx->wm_frame = wm_frame;

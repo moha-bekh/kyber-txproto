@@ -23,6 +23,7 @@ struct WatermarkContext {
     AVFifo *out_frames;
     int format;
     int sw_format;
+    bool is_bgr;
     AVRational frame_rate;
 
     // libplacebo context
