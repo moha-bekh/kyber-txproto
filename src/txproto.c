@@ -32,7 +32,7 @@ int tx_init(TXMainContext *ctx)
 {
     int err;
 
-    if ((err = sp_log_init(SP_LOG_INFO)) < 0)
+    if ((err = sp_log_init(SP_LOG_DEBUG)) < 0)
         return err;
 
     if (!net_init()) {
