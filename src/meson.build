@@ -90,6 +90,7 @@ endif
 libplacebo = dependency('libplacebo', version: '>= 3.120.0', required: false)
 if libplacebo.found()
     dependencies += libplacebo
+    conf.set('HAVE_WATERMARK', 1)
     sources += 'watermark.c'
 endif
 

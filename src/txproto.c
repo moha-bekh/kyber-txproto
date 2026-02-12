@@ -616,5 +616,10 @@ AVBufferRef *tx_io_create(TXMainContext *ctx, uint32_t identifier,
 
 AVBufferRef *tx_watermark_filter_create(TXMainContext *ctx, const char *image_path, TxWatermarkPosition position)
 {
+#ifdef HAVE_WATERMARK
     return watermark_filter_create(ctx, image_path, position);
+#else
+    sp_log(ctx, SP_LOG_ERROR, "Watermark filter is not available");
+    return NULL;
+#endif
 }
