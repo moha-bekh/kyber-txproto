@@ -98,12 +98,12 @@ vulkan = dependency('vulkan', version: '>= 1.1', required: false)
 if vulkan.found()
     dependencies += vulkan
     conf.set('HAVE_VULKAN', 1)
-    if libplacebo.found()
+    if libplacebo.found() and host_machine.system() != 'windows'
         sources += 'watermark_vulkan.c'
     endif
 endif
 
-have_interface = libplacebo.found() and vulkan.found()
+have_interface = libplacebo.found() and vulkan.found() and get_option('interface').enabled()
 if have_interface
     sources += 'interface.c'
     sources += 'interface_common.c'

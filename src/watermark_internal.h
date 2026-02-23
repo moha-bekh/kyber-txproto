@@ -10,7 +10,7 @@
 #include <libplacebo/log.h>
 #include <libplacebo/renderer.h>
 
-#ifdef HAVE_D3D11
+#if defined(_WIN32) && defined(HAVE_D3D11)
 #include <libplacebo/d3d11.h>
 #endif
 
@@ -29,9 +29,9 @@ struct WatermarkContext {
     // libplacebo context
     pl_log log;
 
-#if defined(HAVE_D3D11)
+#if defined(HAVE_D3D11) && defined(_WIN32)
     pl_d3d11 device;
-#elif defined(HAVE_VULKAN)
+#elif defined(HAVE_VULKAN) && defined(__linux__)
     pl_vulkan device;
     AVBufferRef *cuda_ctx;
     AVBufferRef *vulkan_ctx;

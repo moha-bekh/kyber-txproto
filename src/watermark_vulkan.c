@@ -19,6 +19,7 @@
 #include "watermark_internal.h"
 #include "watermark_vulkan.h"
 
+#if defined(__linux__) && defined(HAVE_VULKAN)
 int watermark_vulkan_init(struct WatermarkContext *ctx)
 {
     FilterProcContext *proc_ctx = ctx->proc_ctx;
@@ -295,3 +296,5 @@ fail:
     av_frame_free(&av_frame_nv12);
     return ret;
 }
+
+#endif /* __linux__ && HAVE_VULKAN */

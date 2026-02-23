@@ -12,12 +12,13 @@
 #include <libswscale/swscale.h>
 #include <math.h>
 
-#ifdef HAVE_D3D11
+#include "../config.h"
+
+#if defined(_WIN32) && defined(HAVE_D3D11)
 #include <libavutil/hwcontext_d3d11va.h>
 #include <libplacebo/d3d11.h>
-#endif // HAVE_D3D11
+#endif // _WIN32 && HAVE_D3D11
 
-#include "../config.h"
 #include "metrics.h"
 #include "watermark.h"
 #include "watermark_internal.h"
@@ -262,7 +263,7 @@ static int proc_process(struct WatermarkContext *ctx)
             tx_metrics_push(ctx->metrics, metrics, SP_ARRAY_ELEMS(metrics));
         }
 
-#if defined(HAVE_VULKAN)
+#if defined(__linux__) && defined(HAVE_VULKAN)
         ret = watermark_vulkan_recreate_hwframe_ctx(ctx, &ctx->vulkan_hwframe_ctx, av_frame, av_frame->format, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
         if (ret < 0) {
             sp_log(proc_ctx, SP_LOG_WARN, "watermark_vulkan_recreate_hwframe_ctx(VK_HWFRAME_CTX_DEFAULT) failed\n");
@@ -276,7 +277,7 @@ static int proc_process(struct WatermarkContext *ctx)
             fatal_error = true;
             goto loop_cleanup;
         }
-#endif
+#endif // __linux__ && HAVE_VULKAN
 
         struct pl_frame in_frame;
         pl_tex in_tex[4];
@@ -315,7 +316,7 @@ static int proc_process(struct WatermarkContext *ctx)
             sp_log(proc_ctx, SP_LOG_ERROR, "Error when rendering watermark\n");
         }
 
-#ifdef HAVE_VULKAN
+#if defined(__linux__) && defined(HAVE_VULKAN)
         // Convert to NV12
         AVFrame *av_frame_nv12 = NULL;
         ret = watermark_vulkan_convert_frame_to_nv12(ctx, &in_frame, av_frame, &av_frame_nv12);
@@ -331,7 +332,7 @@ static int proc_process(struct WatermarkContext *ctx)
 #else
         pl_unmap_avframe(ctx->device->gpu, &in_frame);
         in_frame_mapped = false;
-#endif
+#endif // __linux__ && HAVE_VULKAN
 
         ret = av_fifo_write(ctx->out_frames, &av_frame, 1);
         if (ret < 0) {
@@ -408,7 +409,7 @@ static int proc_configure(void *raw)
     ));
 
     switch (frame->format) {
-#if defined(HAVE_D3D11)
+#if defined(HAVE_D3D11) && defined(_WIN32)
     case AV_PIX_FMT_D3D11: {
         if (!frame->hw_frames_ctx) {
             sp_log(proc_ctx, SP_LOG_WARN, "Not an hardware frame\n");
@@ -433,9 +434,9 @@ static int proc_configure(void *raw)
         ctx->format = AV_PIX_FMT_D3D11;
         break;
     }
-#endif // HAVE_D3D11
+#endif // _WIN32 && HAVE_D3D11
     default: {
-#if defined(HAVE_VULKAN)
+#if defined(__linux__) && defined(HAVE_VULKAN)
         ret = watermark_vulkan_init(ctx);
         if (ret < 0) {
             sp_log(proc_ctx, SP_LOG_ERROR, "watermark_vulkan_init() failed\n");
@@ -448,7 +449,7 @@ static int proc_configure(void *raw)
         sp_log(proc_ctx, SP_LOG_ERROR, "Unexpected format: %s\n", av_get_pix_fmt_name(frame->format));
         av_frame_free(&frame);
         return -1;
-#endif // HAVE_VULKAN
+#endif // __linux__ && HAVE_VULKAN
     }}
 
     ctx->renderer = pl_renderer_create(ctx->log, ctx->device->gpu);
@@ -512,9 +513,9 @@ fail:
     if (ctx->renderer) {
         pl_renderer_destroy((pl_renderer *)&ctx->renderer);
     }
-#if defined(HAVE_D3D11)
+#if defined(_WIN32) && defined(HAVE_D3D11)
     pl_d3d11_destroy(&ctx->device);
-#elif defined(HAVE_VULKAN)
+#elif defined(HAVE_VULKAN) && defined(__linux__)
     pl_vulkan_destroy(&ctx->device);
 #endif
     return -1;
