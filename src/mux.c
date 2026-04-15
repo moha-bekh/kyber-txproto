@@ -79,7 +79,6 @@ static void *muxing_thread(void *arg)
         av_dump_format(ctx->avf, 0, ctx->out_url, 1);
 
     int flush = 0;
-    int fmt_can_flush = ctx->avf->oformat->flags & AVFMT_ALLOW_FLUSH;
 
     /* Mux stats */
     SlidingWinCtx sctx_mux = { 0 };
@@ -101,12 +100,6 @@ static void *muxing_thread(void *arg)
         if (!flush) {
             in_pkt = sp_packet_fifo_pop(ctx->src_packets);
             flush = !in_pkt;
-
-            /* Format can't flush, so just exit */
-            if (flush && !fmt_can_flush) {
-                pthread_mutex_unlock(&ctx->lock);
-                break;
-            }
         }
 
         if (flush)
