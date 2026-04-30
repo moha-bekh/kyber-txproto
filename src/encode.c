@@ -687,7 +687,15 @@ static void *encoding_thread(void *arg)
 
                 int clear_forced_idr = 0;
                 if (atomic_load(&ctx->force_idr)) {
+                    /* Force the next frame to be an IDR. The option name differs
+                     * across encoders: nvenc and x264 expose "forced-idr" (dash),
+                     * AMF and QSV expose "forced_idr" (underscore). VAAPI and
+                     * videotoolbox don't need an option — they derive IDR from
+                     * pict_type. av_opt_set silently ignores options that don't
+                     * exist on the active codec, so setting both spellings is
+                     * safe and covers all backends. */
                     av_opt_set(ctx->avctx->priv_data, "forced-idr", "1", 0);
+                    av_opt_set(ctx->avctx->priv_data, "forced_idr", "1", 0);
                     frame->pict_type = AV_PICTURE_TYPE_I;
                     clear_forced_idr = 1;
                 }
@@ -710,7 +718,10 @@ static void *encoding_thread(void *arg)
                 }
 
                 if (clear_forced_idr) {
+                    /* Restore the default so subsequent frames are not also
+                     * promoted to IDR. */
                     av_opt_set(ctx->avctx->priv_data, "forced-idr", "0", 0);
+                    av_opt_set(ctx->avctx->priv_data, "forced_idr", "0", 0);
                     atomic_store(&ctx->force_idr, 0);
                 }
             } else {
