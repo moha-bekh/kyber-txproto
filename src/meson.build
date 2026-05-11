@@ -255,6 +255,25 @@ link_args = []
 if host_machine.system() == 'windows'
     link_args += ['-static-libgcc', '-Wl,-Bstatic', '-lpthread', '-Wl,-Bdynamic']
 
+    # When any static archive linked into a DLL contains __declspec(dllexport)
+    # symbols (e.g. libplacebo built static with -DPL_EXPORT), MinGW switches
+    # from auto-export mode to explicit-export mode, hiding libtxproto's own
+    # symbols.  --export-all-symbols restores the auto-export behavior.
+    # --exclude-libs then suppresses re-export of third-party archives so that
+    # downstream consumers linking those archives statically themselves don't
+    # hit `multiple definition` errors.
+    link_args += [
+        '-Wl,--export-all-symbols',
+        '-Wl,--exclude-libs=libavcodec.a',
+        '-Wl,--exclude-libs=libavformat.a',
+        '-Wl,--exclude-libs=libavutil.a',
+        '-Wl,--exclude-libs=libavfilter.a',
+        '-Wl,--exclude-libs=libavdevice.a',
+        '-Wl,--exclude-libs=libswresample.a',
+        '-Wl,--exclude-libs=libswscale.a',
+        '-Wl,--exclude-libs=libplacebo.a',
+    ]
+
     lib_ws2_32 = cc.find_library('ws2_32', required: true)
     dependencies += lib_ws2_32
 endif
