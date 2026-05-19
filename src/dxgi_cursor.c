@@ -516,6 +516,19 @@ static int handle_connecting(DxgiCursorHandler *ctx)
 
 static int handle_connected(DxgiCursorHandler *ctx)
 {
+    int err;
+
+    /* Flush the current cursor state to the freshly-connected consumer.
+     * Cursor updates downstream only fire on shape changes, so without this
+     * initial send a client connecting while the game is already running
+     * would not see the cursor bitmap until the next shape change (e.g.
+     * Alt+Tab). */
+    process_pending_cursors(ctx);
+    err = send_cursor(ctx);
+    if (err < 0) {
+        return err;
+    }
+
     while (!atomic_load(&ctx->quit)) {
         DWORD wait_err = WaitForSingleObject(ctx->fifo_event, INFINITE);
 
@@ -523,7 +536,7 @@ static int handle_connected(DxgiCursorHandler *ctx)
             case WAIT_OBJECT_0:
                 ResetEvent(ctx->fifo_event);
 
-                int err = handle_cursor_received(ctx);
+                err = handle_cursor_received(ctx);
                 if (err < 0) {
                     return err;
                 }
