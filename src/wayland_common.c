@@ -34,7 +34,14 @@ static AVBufferRef *ctx_ref = NULL;
 static void xdg_out_position(void *opaque, struct zxdg_output_v1 *zxdg_output_v1,
                              int32_t x, int32_t y)
 {
+    IOSysEntry *entry = (IOSysEntry *)(((AVBufferRef *)opaque)->data);
+    WaylandIOPriv *priv = (WaylandIOPriv *)entry->api_priv;
+    WaylandCtx *main = priv->main_ctx;
 
+    pthread_mutex_lock(&main->lock);
+    entry->x = x;
+    entry->y = y;
+    pthread_mutex_unlock(&main->lock);
 }
 
 static void xdg_out_size(void *opaque, struct zxdg_output_v1 *zxdg_output_v1,
@@ -45,15 +52,7 @@ static void xdg_out_size(void *opaque, struct zxdg_output_v1 *zxdg_output_v1,
 
 static void xdg_out_done(void *opaque, struct zxdg_output_v1 *zxdg_output_v1)
 {
-    IOSysEntry *entry = (IOSysEntry *)(((AVBufferRef *)opaque)->data);
-    WaylandIOPriv *priv = (WaylandIOPriv *)entry->api_priv;
-    WaylandCtx *main = priv->main_ctx;
-
-    pthread_mutex_lock(&main->lock);
-
-    sp_bufferlist_append_noref(main->output_list, opaque);
-
-    pthread_mutex_unlock(&main->lock);
+    /* entry already added to output_list by output_handle_done */
 }
 
 static void xdg_out_name(void *opaque, struct zxdg_output_v1 *zxdg_output_v1,
@@ -144,10 +143,7 @@ static void output_handle_done(void *opaque, struct wl_output *wl_output)
     WaylandCtx *main = priv->main_ctx;
 
     pthread_mutex_lock(&main->lock);
-
-    if (!priv->xdg_out)
-        sp_bufferlist_append_noref(main->output_list, opaque);
-
+    sp_bufferlist_append_noref(main->output_list, opaque);
     pthread_mutex_unlock(&main->lock);
 }
 
@@ -215,6 +211,7 @@ static void registry_handle_add(void *opaque, struct wl_registry *reg,
         AVBufferRef *buf = av_buffer_create((uint8_t *)entry, sizeof(*entry),
                                             destroy_entry, NULL, 0);
 
+        output->self_ref = buf;
         wl_output_add_listener(output->output, &output_listener, buf);
         if (ctx->xdg_output_manager) {
             output->xdg_out = zxdg_output_manager_v1_get_xdg_output(ctx->xdg_output_manager,
@@ -289,6 +286,36 @@ AVBufferRef *sp_find_ref_wayland_output(WaylandCtx *ctx,
     else
         ret = sp_bufferlist_ref(ctx->output_list, sp_bufferlist_iosysentry_by_id, &id);
 
+    pthread_mutex_unlock(&ctx->lock);
+
+    return ret;
+}
+
+static AVBufferRef *find_iosysentry_by_name(AVBufferRef *ref, void *opaque)
+{
+    IOSysEntry *entry = (IOSysEntry *)ref->data;
+    const char *name = sp_class_get_name(entry);
+    if (name && !strcmp(name, (const char *)opaque))
+        return ref;
+    return NULL;
+}
+
+int sp_wayland_lookup_output_xy(WaylandCtx *ctx, const char *name, int *x, int *y)
+{
+    if (!ctx || !name || !x || !y)
+        return -1;
+
+    pthread_mutex_lock(&ctx->lock);
+    AVBufferRef *ref = sp_bufferlist_ref(ctx->output_list,
+                                         find_iosysentry_by_name, (void *)name);
+    int ret = -1;
+    if (ref) {
+        IOSysEntry *entry = (IOSysEntry *)ref->data;
+        *x = entry->x;
+        *y = entry->y;
+        av_buffer_unref(&ref);
+        ret = 0;
+    }
     pthread_mutex_unlock(&ctx->lock);
 
     return ret;
@@ -593,6 +620,26 @@ int sp_wayland_create(AVBufferRef **ref)
     /* Force the server to process events */
     wl_display_dispatch(ctx->display);
     wl_display_roundtrip(ctx->display);
+
+    /* Second pass: under compositors that announce zxdg_output_manager_v1 after
+     * wl_output (e.g. GNOME), xdg_out was not created during registry_handle_add.
+     * Create it now for any output that is missing one, then roundtrip to receive
+     * the xdg name/position events that set the connector name used by DRM lookup. */
+    if (ctx->xdg_output_manager) {
+        AVBufferRef *iter = NULL;
+        while ((iter = sp_bufferlist_iter_ref(ctx->output_list))) {
+            IOSysEntry *entry = (IOSysEntry *)iter->data;
+            WaylandIOPriv *priv = (WaylandIOPriv *)entry->api_priv;
+            if (!priv->xdg_out) {
+                priv->xdg_out = zxdg_output_manager_v1_get_xdg_output(
+                    ctx->xdg_output_manager, priv->output);
+                zxdg_output_v1_add_listener(priv->xdg_out, &xdg_output_listener,
+                                            priv->self_ref);
+            }
+            av_buffer_unref(&iter);
+        }
+        wl_display_roundtrip(ctx->display);
+    }
 
     /* Get display FD */
     ctx->display_fd = wl_display_get_fd(ctx->display);

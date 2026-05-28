@@ -39,6 +39,7 @@ typedef struct WaylandIOPriv {
     struct WaylandCtx *main_ctx;
     struct wl_output *output;
     struct zxdg_output_v1 *xdg_out;
+    AVBufferRef *self_ref; /* back-pointer to the owning AVBufferRef, no refcount increment */
 } WaylandIOPriv;
 
 typedef struct WaylandCtx {
@@ -90,3 +91,7 @@ int sp_wayland_create(AVBufferRef **ref);
 
 AVBufferRef *sp_find_ref_wayland_output(WaylandCtx *ctx,
                                         struct wl_output *out, uint32_t id);
+
+/* Look up an output's logical desktop position by name (e.g. "DP-2", "eDP-1").
+ * Returns 0 and writes (*x, *y) on success, non-zero if no match. */
+int sp_wayland_lookup_output_xy(WaylandCtx *ctx, const char *name, int *x, int *y);

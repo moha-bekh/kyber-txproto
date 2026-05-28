@@ -59,6 +59,10 @@
 #include "iosys_drm_wrapper.h"
 #include "iosys_drm_gl.h"
 
+#ifdef HAVE_WAYLAND
+#include "wayland_common.h"
+#endif
+
 const IOSysAPI src_drm;
 
 typedef struct {
@@ -74,6 +78,13 @@ typedef struct {
     atomic_int quit;
 
     struct tx_metrics *metrics;
+
+#ifdef HAVE_WAYLAND
+    /* Optional Wayland connection used to resolve desktop-coordinate (x,y)
+     * for each output by connector name. Under Wayland KMS does not know
+     * the compositor's output layout, so crtc->x/y are always 0. */
+    AVBufferRef *wl_ref;
+#endif
 } DRMGrabCtx;
 
 typedef struct {
@@ -248,6 +259,24 @@ static void drmctx_update_entries(DRMGrabCtx *ctx) {
                 drmModeFreeCrtc(crtc);
             }
 
+#ifdef HAVE_WAYLAND
+            /* Under Wayland, crtc->x/y are 0 because each compositor scans
+             * out a per-output framebuffer at origin. Ask the compositor
+             * for the real desktop position by connector name. */
+            if (ctx->wl_ref) {
+                char *cname = drm_card_get_connector_name(card, plane_id);
+                if (cname) {
+                    WaylandCtx *wl = (WaylandCtx *)ctx->wl_ref->data;
+                    int wx, wy;
+                    if (sp_wayland_lookup_output_xy(wl, cname, &wx, &wy) == 0) {
+                        entry_x = wx;
+                        entry_y = wy;
+                    }
+                    free(cname);
+                }
+            }
+#endif
+
             drmctx_update_or_create_entry(
                 ctx,
                 &card_path_list[card_idx], card, plane_id,
@@ -332,6 +361,10 @@ static void drmctx_release(DRMGrabCtx* ctx) {
             sp_eventlist_dispatch(ctx, ctx->events, SP_EVENT_ON_DESTROY, ctx);
         sp_class_free(ctx);
     }
+#ifdef HAVE_WAYLAND
+    if (ctx->wl_ref)
+        av_buffer_unref(&ctx->wl_ref);
+#endif
     sp_bufferlist_free(&ctx->entries);
     av_free(ctx);
 }
@@ -353,6 +386,15 @@ static int drmctx_init(DRMGrabCtx *ctx) {
     }
 
     pthread_mutex_init(&ctx->update_mutex, NULL);
+
+#ifdef HAVE_WAYLAND
+    /* Best-effort: if we're inside a Wayland session, use the compositor as
+     * the source of truth for output layout. Failure is fine — we fall back
+     * to CRTC coordinates (correct on X11, zero under Wayland). */
+    if (sp_wayland_create(&ctx->wl_ref) < 0)
+        ctx->wl_ref = NULL;
+#endif
+
     pthread_create(&ctx->updateThread, NULL, &drmctx_update_sources_thread, ctx);
 
     return 0;
