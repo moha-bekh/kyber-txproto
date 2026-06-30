@@ -86,8 +86,9 @@ if libedit.found()
     features += ', ' + libedit.name() + ' ' + libedit.version()
 endif
 
-# libplacebo
-libplacebo = dependency('libplacebo', version: '>= 3.120.0', required: false)
+# libplacebo (required by the watermark filter)
+libplacebo = dependency('libplacebo', version: '>= 3.120.0',
+                        required: get_option('watermark'))
 if libplacebo.found()
     dependencies += libplacebo
     conf.set('HAVE_WATERMARK', 1)

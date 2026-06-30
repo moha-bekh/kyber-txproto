@@ -6,6 +6,7 @@ option('wasapi', type: 'feature', value: 'auto', description: 'WASAPI output')
 option('libavdevice', type: 'feature', value: 'auto', description: 'libavdevice inputs and outputs')
 
 option('interface', type: 'feature', value: 'auto', description: 'Vulkan GUI')
+option('watermark', type: 'feature', value: 'auto', description: 'Watermark filter support (requires libplacebo)')
 option('libedit', type: 'feature', value: 'auto', description: 'libedit support (for a REPL interface)')
 
 option('cli', type: 'feature', value: 'enabled', description: 'Standalone txproto executable')
