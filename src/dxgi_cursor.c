@@ -34,6 +34,9 @@
 
 #define SIZEOF_ARRAY(a) (sizeof((a))/sizeof((a)[0]))
 
+/* Delay between attempts to (re)connect to the input server's named pipe. */
+#define PIPE_RECONNECT_DELAY_MS 100
+
 typedef struct DxgiCursor {
     int visible;
     POINT position;
@@ -484,34 +487,21 @@ static int handle_cursor_received(DxgiCursorHandler *ctx)
 
 static int handle_connecting(DxgiCursorHandler *ctx)
 {
-    int err = open_pipe(ctx);
-    if (err < 0) {
-        return AVERROR_EXTERNAL;
-    }
-
     while (!atomic_load(&ctx->quit)) {
-        DWORD ret = WaitForSingleObject(ctx->completion_event, 100);
-        switch (ret) {
-            case WAIT_OBJECT_0:
-                ResetEvent(ctx->fifo_event);
-                sp_log(ctx, SP_LOG_INFO, "NamedPipe connected for display %u\n", ctx->identifier);
-                break;
-
-            case WAIT_TIMEOUT:
-                process_pending_cursors(ctx);
-                break;
-
-            case WAIT_ABANDONED:
-            default:
-                close_pipe(ctx);
-                return AVERROR_EXTERNAL;
+        if (open_pipe(ctx) >= 0) {
+            ResetEvent(ctx->fifo_event);
+            sp_log(ctx, SP_LOG_INFO, "NamedPipe connected for display %u\n",
+                   ctx->identifier);
+            return 0;
         }
 
+        process_pending_cursors(ctx);
 
-        break;
+        ResetEvent(ctx->fifo_event);
+        WaitForSingleObject(ctx->fifo_event, PIPE_RECONNECT_DELAY_MS);
     }
 
-    return 0;
+    return AVERROR_EXTERNAL;
 }
 
 static int handle_connected(DxgiCursorHandler *ctx)
@@ -562,26 +552,19 @@ static int handle_connected(DxgiCursorHandler *ctx)
 static void *sender_thread(void *arg)
 {
     DxgiCursorHandler *ctx = arg;
-    int connected = 0;
-    int ret;
 
     sp_set_thread_name_self(sp_class_get_name(ctx));
 
     while (!atomic_load(&ctx->quit)) {
-        if (!connected) {
-            ret = handle_connecting(ctx);
-            if (ret < 0) {
-                break;
-            }
+        if (handle_connecting(ctx) < 0) {
+            break;
+        }
 
-            connected = 1;
-        } else {
-            ret = handle_connected(ctx);
-            if (ret < 0) {
-                break;
-            }
+        handle_connected(ctx);
+        close_pipe(ctx);
 
-            connected = 0;
+        if (!atomic_load(&ctx->quit)) {
+            WaitForSingleObject(ctx->fifo_event, PIPE_RECONNECT_DELAY_MS);
         }
     }
 
