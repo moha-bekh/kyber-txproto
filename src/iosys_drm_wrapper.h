@@ -88,7 +88,7 @@ drmModeCrtc* plane_wrapper_get_crtc(const PlaneWrapper* wrapper);
 // DrmCard functions
 DrmCard* drm_card_create(void);
 void drm_card_destroy(DrmCard* card);
-int drm_card_init(DrmCard* card, const char* devicePath);
+int drm_card_init(DrmCard* card, const char* devicePath, bool verbose);
 drmModeEncoder* drm_card_get_encoder(const DrmCard* card, uint32_t encoderId);
 drmModeRes* drm_card_get_res(const DrmCard* card);
 drmModeConnector* drm_card_get_connector(const DrmCard* card, uint32_t connectorId);

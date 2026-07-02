@@ -77,6 +77,12 @@ typedef struct {
     pthread_mutex_t update_mutex;
     atomic_int quit;
 
+    /* Device paths whose init has already failed and been logged, so the
+     * per-second update loop doesn't spam the same errors every iteration.
+     * Only accessed from the update loop (under update_mutex). */
+    char **warned_paths;
+    int nb_warned_paths;
+
     struct tx_metrics *metrics;
 
 #ifdef HAVE_WAYLAND
@@ -86,6 +92,40 @@ typedef struct {
     AVBufferRef *wl_ref;
 #endif
 } DRMGrabCtx;
+
+static bool drmctx_path_is_warned(DRMGrabCtx *ctx, const char *path) {
+    for (int i = 0; i < ctx->nb_warned_paths; ++i) {
+        if (!strcmp(ctx->warned_paths[i], path))
+            return true;
+    }
+    return false;
+}
+
+static void drmctx_mark_path_warned(DRMGrabCtx *ctx, const char *path) {
+    if (drmctx_path_is_warned(ctx, path))
+        return;
+
+    char **tmp = av_realloc_array(ctx->warned_paths, ctx->nb_warned_paths + 1,
+                                  sizeof(*ctx->warned_paths));
+    if (!tmp)
+        return;
+    ctx->warned_paths = tmp;
+
+    char *dup = av_strdup(path);
+    if (!dup)
+        return;
+    ctx->warned_paths[ctx->nb_warned_paths++] = dup;
+}
+
+static void drmctx_clear_path_warned(DRMGrabCtx *ctx, const char *path) {
+    for (int i = 0; i < ctx->nb_warned_paths; ++i) {
+        if (!strcmp(ctx->warned_paths[i], path)) {
+            av_free(ctx->warned_paths[i]);
+            ctx->warned_paths[i] = ctx->warned_paths[--ctx->nb_warned_paths];
+            return;
+        }
+    }
+}
 
 typedef struct {
     DRMGrabCtx* ctx;
@@ -207,10 +247,15 @@ static void drmctx_update_entries(DRMGrabCtx *ctx) {
     for (int card_idx = 0; card_path_list[card_idx].path != NULL; ++card_idx) {
         const char* card_path = card_path_list[card_idx].path;
         DrmCard* card = drm_card_create();
-        ret = drm_card_init(card, card_path);
+        /* Only log init diagnostics the first time a card fails, otherwise the
+         * per-second polling would spam the same errors indefinitely. */
+        bool verbose = !drmctx_path_is_warned(ctx, card_path);
+        ret = drm_card_init(card, card_path, verbose);
         if (ret < 0) {
+            drmctx_mark_path_warned(ctx, card_path);
             goto loop_card;
         }
+        drmctx_clear_path_warned(ctx, card_path);
         for(int plane_idx = 0; plane_idx < card->planes->count_planes; ++plane_idx) {
             uint32_t plane_id = card->planes->planes[plane_idx];
             FbWrapper* fb = NULL;
@@ -365,6 +410,9 @@ static void drmctx_release(DRMGrabCtx* ctx) {
     if (ctx->wl_ref)
         av_buffer_unref(&ctx->wl_ref);
 #endif
+    for (int i = 0; i < ctx->nb_warned_paths; ++i)
+        av_free(ctx->warned_paths[i]);
+    av_freep(&ctx->warned_paths);
     sp_bufferlist_free(&ctx->entries);
     av_free(ctx);
 }
@@ -889,7 +937,7 @@ static int drmcap_init_drm(DRMGrabCapture* cap, const char* cardname, uint32_t p
     //Open DRM card and search for our plan
 
     DrmCard* card = drm_card_create();
-    ret = drm_card_init(card, cardname);
+    ret = drm_card_init(card, cardname, true);
     if (ret != 0) {
         drm_card_destroy(card);
         return ret;

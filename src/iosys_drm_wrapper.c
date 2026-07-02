@@ -12,16 +12,18 @@
 
 //// sysadmin scope
 
-static cap_t cap_sys_admin_scope_create(void* ctx) {
+static cap_t cap_sys_admin_scope_create(void* ctx, bool verbose) {
     cap_t caps = cap_get_proc();
     if (!caps) {
-        sp_log(ctx, SP_LOG_ERROR, "failed to get process capabilities\n");
+        if (verbose)
+            sp_log(ctx, SP_LOG_ERROR, "failed to get process capabilities\n");
         return NULL;
     }
     cap_value_t sys_admin = CAP_SYS_ADMIN;
     if (cap_set_flag(caps, CAP_EFFECTIVE, 1, &sys_admin, CAP_SET) ||
         cap_set_proc(caps)) {
-        sp_log(ctx, SP_LOG_ERROR, "failed to get CAP_SYS_ADMIN permission\n");
+        if (verbose)
+            sp_log(ctx, SP_LOG_ERROR, "failed to get CAP_SYS_ADMIN permission\n");
         cap_free(caps);
         return NULL;
     }
@@ -215,7 +217,7 @@ FbWrapper* fb_wrapper_create(int fd, uint32_t bufferId) {
 
     wrapper->m_fd = fd;
 
-    cap_t adminScope = cap_sys_admin_scope_create(wrapper);
+    cap_t adminScope = cap_sys_admin_scope_create(wrapper, true);
     bool ret = false;
 
     drmModeFB2* fb2 = drmModeGetFB2(fd, bufferId);
@@ -393,35 +395,37 @@ void drm_card_destroy(DrmCard* card) {
     free(card);
 }
 
-int drm_card_init(DrmCard* card, const char* devicePath) {
+int drm_card_init(DrmCard* card, const char* devicePath, bool verbose) {
     assert(card);
 
-    cap_t adminScope = cap_sys_admin_scope_create(card);
+    cap_t adminScope = cap_sys_admin_scope_create(card, verbose);
 
     card->fd = open(devicePath, O_RDWR);
     if (card->fd < 0) {
-        sp_log(card, SP_LOG_ERROR, "failed to open drm device %s", devicePath);
+        if (verbose)
+            sp_log(card, SP_LOG_ERROR, "failed to open drm device %s", devicePath);
         cap_sys_admin_scope_destroy(NULL, adminScope);
         return -1;
     }
 
     uint64_t cap = 0;
     drmGetCap(card->fd, DRM_CAP_DUMB_BUFFER, &cap);
-    if (cap != 1) {
+    if (cap != 1 && verbose) {
         sp_log(card, SP_LOG_WARN, "DRM_CAP_DUMB_BUFFER is missing");
     }
 
-    if (drmSetClientCap(card->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) != 0) {
+    if (drmSetClientCap(card->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1) != 0 && verbose) {
         perror("Cannot tell drm to expose all planes; the rest will very likely fail");
     }
 
-    if (drmSetClientCap(card->fd, DRM_CLIENT_CAP_ATOMIC, 1) != 0) {
+    if (drmSetClientCap(card->fd, DRM_CLIENT_CAP_ATOMIC, 1) != 0 && verbose) {
         sp_log(card, SP_LOG_WARN, "GPU driver doesn't support atomic mode-setting");
     }
 
     card->planes = drmModeGetPlaneResources(card->fd);
     if (!card->planes) {
-        sp_log(card, SP_LOG_ERROR, "failed to get plane resources");
+        if (verbose)
+            sp_log(card, SP_LOG_ERROR, "failed to get plane resources");
         cap_sys_admin_scope_destroy(card, adminScope);
         return -1;
     }
