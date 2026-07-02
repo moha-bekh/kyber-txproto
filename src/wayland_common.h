@@ -40,6 +40,7 @@ typedef struct WaylandIOPriv {
     struct wl_output *output;
     struct zxdg_output_v1 *xdg_out;
     AVBufferRef *self_ref; /* back-pointer to the owning AVBufferRef, no refcount increment */
+    int in_output_list;    /* guards against wl_output.done firing more than once per output */
 } WaylandIOPriv;
 
 typedef struct WaylandCtx {

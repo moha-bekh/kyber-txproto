@@ -143,7 +143,11 @@ static void output_handle_done(void *opaque, struct wl_output *wl_output)
     WaylandCtx *main = priv->main_ctx;
 
     pthread_mutex_lock(&main->lock);
-    sp_bufferlist_append_noref(main->output_list, opaque);
+    /* wl_output.done may be sent again on later property changes; only append once. */
+    if (!priv->in_output_list) {
+        sp_bufferlist_append_noref(main->output_list, opaque);
+        priv->in_output_list = 1;
+    }
     pthread_mutex_unlock(&main->lock);
 }
 
