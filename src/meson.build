@@ -279,18 +279,20 @@ if host_machine.system() == 'windows'
     # symbols (e.g. libplacebo built static with -DPL_EXPORT), MinGW switches
     # from auto-export mode to explicit-export mode, hiding libtxproto's own
     # symbols.  --export-all-symbols restores the auto-export behavior.
-    # --exclude-libs then suppresses re-export of third-party archives so that
-    # downstream consumers linking those archives statically themselves don't
-    # hit `multiple definition` errors.
+    #
+    # libtxproto-0.dll is the single home of FFmpeg on Windows: it re-exports the
+    # full FFmpeg / x264 / opus / vpl API so that downstream consumers resolve
+    # those symbols from this DLL instead of statically bundling their own
+    # ~30 MB copy of FFmpeg. This covers both the Rust server (txproto-sys, a
+    # few libavutil functions) and the libavconv backend (which uses the whole
+    # FFmpeg API). Only libplacebo stays excluded: no consumer links against it,
+    # and re-exporting it would needlessly bloat the export table.
+    #
+    # av_log2 is referenced by libavconv but not by txproto itself, so it is not
+    # pulled into the DLL by default; force its object in (and hence export it).
     link_args += [
         '-Wl,--export-all-symbols',
-        '-Wl,--exclude-libs=libavcodec.a',
-        '-Wl,--exclude-libs=libavformat.a',
-        '-Wl,--exclude-libs=libavutil.a',
-        '-Wl,--exclude-libs=libavfilter.a',
-        '-Wl,--exclude-libs=libavdevice.a',
-        '-Wl,--exclude-libs=libswresample.a',
-        '-Wl,--exclude-libs=libswscale.a',
+        '-Wl,--undefined=av_log2',
         '-Wl,--exclude-libs=libplacebo.a',
     ]
 
