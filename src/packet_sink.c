@@ -356,7 +356,7 @@ sp_packet_sink_init(AVBufferRef *ctx_ref, struct tx_metrics *metrics) {
         return -1;
     }
 
-#ifdef __WIN32
+#ifdef _WIN32
     uint16_t net_endpoint = htons(endpoint);
 #else
     uint16_t net_endpoint = htobe16(endpoint);
