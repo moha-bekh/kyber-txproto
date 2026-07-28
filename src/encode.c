@@ -686,7 +686,7 @@ static void *encoding_thread(void *arg)
                 out_pkt = av_packet_alloc();
 
                 int clear_forced_idr = 0;
-                if (atomic_load(&ctx->force_idr)) {
+                if (frame && atomic_load(&ctx->force_idr)) {
                     /* Force the next frame to be an IDR. The option name differs
                      * across encoders: nvenc and x264 expose "forced-idr" (dash),
                      * AMF and QSV expose "forced_idr" (underscore). VAAPI and
@@ -700,7 +700,7 @@ static void *encoding_thread(void *arg)
                     clear_forced_idr = 1;
                 }
 
-                if (ctx->metrics) {
+                if (frame && ctx->metrics) {
                     const tx_metrics_entry metrics[] = {
                         { .key = "pts", .value = frame->pts },
                         { .key = "encoding", .value = av_gettime_relative() },
