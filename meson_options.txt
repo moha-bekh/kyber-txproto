@@ -3,6 +3,7 @@ option('pulse', type: 'feature', value: 'auto', description: 'PulseAudio input a
 option('wayland', type: 'feature', value: 'auto', description: 'Wayland input and output')
 option('dxgi', type: 'feature', value: 'auto', description: 'DXGI inputs and outputs')
 option('wasapi', type: 'feature', value: 'auto', description: 'WASAPI output')
+option('screencapturekit', type: 'feature', value: 'auto', description: 'ScreenCaptureKit input')
 option('libavdevice', type: 'feature', value: 'auto', description: 'libavdevice inputs and outputs')
 
 option('interface', type: 'feature', value: 'auto', description: 'Vulkan GUI')

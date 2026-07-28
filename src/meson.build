@@ -156,6 +156,22 @@ if libxcb.found()
     endif
 endif
 
+objc_args = []
+have_screencapturekit = false
+
+# ScreenCaptureKit
+screencapturekit = dependency('appleframeworks',
+    modules: ['ScreenCaptureKit', 'IOKit', 'AppKit'],
+    required: get_option('screencapturekit'))
+if screencapturekit.found()
+    dependencies += screencapturekit
+    sources += 'iosys_screencapturekit.m'
+    conf.set('HAVE_SCREENCAPTUREKIT', 1)
+    features += ', ScreenCaptureKit'
+    objc_args += ['-fobjc-arc']
+    have_screencapturekit = true
+endif
+
 # Wayland
 wayland_scanner = find_program('wayland-scanner', required: get_option('wayland'))
 wayland_deps = [ # Reorder with care, wayland_protocols expects them like this
@@ -290,6 +306,7 @@ lib = library('txproto', sources,
     install: true,
     dependencies: dependencies,
     link_args: link_args,
+    objc_args: objc_args,
     soversion: ver_major,
     include_directories: inc,
 )
@@ -349,6 +366,7 @@ summary({
     'drm': have_drm,
     'nvfbc': have_nvfbc,
     'libavdevice': libavdevice.found(),
+    'screencapturekit': have_screencapturekit,
 }, section: 'I/O systems', bool_yn: true)
 
 summary({

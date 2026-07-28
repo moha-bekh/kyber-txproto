@@ -95,6 +95,9 @@ extern const IOSysAPI src_nvfbc;
 extern const IOSysAPI src_drm;
 #endif
 
+#ifdef HAVE_SCREENCAPTUREKIT
+extern const IOSysAPI src_screencapturekit;
+#endif
 
 const IOSysAPI *sp_compiled_apis[] = {
 #ifdef HAVE_PULSEAUDIO
@@ -117,6 +120,9 @@ const IOSysAPI *sp_compiled_apis[] = {
 #endif
 #ifdef HAVE_DRM
     &src_drm,
+#endif
+#ifdef HAVE_SCREENCAPTUREKIT
+    &src_screencapturekit,
 #endif
 };
 
