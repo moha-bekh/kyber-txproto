@@ -5,6 +5,11 @@ project('txproto', 'c',
     meson_version: '>=0.60.0',
 )
 
+# objc is only used by the ScreenCaptureKit IOSys on macOS
+if host_machine.system() == 'darwin'
+    add_languages('objc', native: false)
+endif
+
 lua_ver_maj = 5
 lua_ver_min = 4
 lua_ver = lua_ver_maj.to_string() + '.' + lua_ver_min.to_string()

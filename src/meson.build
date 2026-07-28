@@ -88,14 +88,16 @@ endif
 
 # libplacebo (required by the watermark filter)
 libplacebo = dependency('libplacebo', version: '>= 3.120.0',
-                        required: get_option('watermark'))
+    required: get_option('watermark'),
+    allow_fallback: host_machine.system() != 'darwin') # darwin: don't force-build GPU stack from wraps
 if libplacebo.found()
     dependencies += libplacebo
     conf.set('HAVE_WATERMARK', 1)
     sources += 'watermark.c'
 endif
 
-vulkan = dependency('vulkan', version: '>= 1.1', required: false)
+vulkan = dependency('vulkan', version: '>= 1.1', required: false,
+    allow_fallback: host_machine.system() != 'darwin') # darwin: no native Vulkan, skip wrap fallback
 if vulkan.found()
     dependencies += vulkan
     conf.set('HAVE_VULKAN', 1)
@@ -212,7 +214,8 @@ if have_wasapi
 endif
 
 # NVFBC
-libnvcodec = dependency('ffnvcodec', required: false)
+libnvcodec = dependency('ffnvcodec', required: false,
+    allow_fallback: host_machine.system() != 'darwin') # darwin: skip wrap fallback (nvfbc unused)
 have_nvfbc = libnvcodec.found() and have_xcb
 if have_nvfbc
     sources += 'iosys_nvfbc.c'

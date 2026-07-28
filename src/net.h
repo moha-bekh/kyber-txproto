@@ -17,6 +17,12 @@
 
 #else
 # include <sys/socket.h>
+# if defined(__APPLE__)
+#  include <libkern/OSByteOrder.h>
+#  define htobe16(x) OSSwapHostToBigInt16(x)
+# else
+#  include <endian.h>
+# endif
 # define INVALID_SOCKET -1
   typedef int socket_t;
 #endif
