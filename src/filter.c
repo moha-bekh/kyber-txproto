@@ -253,17 +253,57 @@ static int re_create_filtering(FilterContext *ctx, int first_init)
         add_pads_direct(ctx, 1, filt, filt->output_pads, filt->nb_outputs, first_init);
     } else {
         AVFilterInOut *in = NULL, *out = NULL;
+        AVFilterGraphSegment *seg = NULL;
 
-        err = avfilter_graph_parse2(ctx->graph, ctx->graph_str, &in, &out);
+        err = avfilter_graph_segment_parse(ctx->graph, ctx->graph_str, 0, &seg);
         if (err) {
             sp_log(ctx, SP_LOG_ERROR, "Unable to parse filter graph: %s!\n", av_err2str(err));
             goto end;
+        }
+
+        err = avfilter_graph_segment_create_filters(seg, 0);
+        if (err) {
+            sp_log(ctx, SP_LOG_ERROR, "Unable to create filters: %s!\n", av_err2str(err));
+            avfilter_graph_segment_free(&seg);
+            goto fail_parsed;
+        }
+
+        if (!ctx->hw_device_ref && ctx->device_type != AV_HWDEVICE_TYPE_NONE) {
+            err = av_hwdevice_ctx_create(&ctx->hw_device_ref, ctx->device_type,
+                                         NULL, NULL, 0);
+            if (err < 0) {
+                sp_log(ctx, SP_LOG_ERROR, "Could not init hardware device: %s!\n",
+                       av_err2str(err));
+                avfilter_graph_segment_free(&seg);
+                goto fail_parsed;
+            }
+        }
+
+        if (ctx->hw_device_ref) {
+            for (int i = 0; i < ctx->graph->nb_filters; i++) {
+                AVFilterContext *filter = ctx->graph->filters[i];
+                if (!filter->hw_device_ctx)
+                    filter->hw_device_ctx = av_buffer_ref(ctx->hw_device_ref);
+            }
+        }
+
+        err = avfilter_graph_segment_apply(seg, 0, &in, &out);
+        avfilter_graph_segment_free(&seg);
+        if (err) {
+            sp_log(ctx, SP_LOG_ERROR, "Unable to parse filter graph: %s!\n", av_err2str(err));
+            goto fail_parsed;
         }
 
         add_pads(ctx, 0, in, first_init);
         add_pads(ctx, 1, out, first_init);
         avfilter_inout_free(&in);
         avfilter_inout_free(&out);
+        goto end;
+
+fail_parsed:
+        while (ctx->graph->nb_filters)
+            avfilter_free(ctx->graph->filters[0]);
+        av_freep(&ctx->graph->filters);
     }
 
 end:
@@ -753,7 +793,10 @@ static int sp_filter_init_graph(FilterContext *ctx)
     if (ctx->hw_device_ref) {
         for (int i = 0; i < ctx->graph->nb_filters; i++) {
             AVFilterContext *filter = ctx->graph->filters[i];
-            filter->hw_device_ctx = av_buffer_ref(ctx->hw_device_ref);
+            /* May already be set by re_create_filtering() for filters that
+             * need it at init() time (e.g. hwupload). */
+            if (!filter->hw_device_ctx)
+                filter->hw_device_ctx = av_buffer_ref(ctx->hw_device_ref);
         }
         av_buffer_unref(&ctx->hw_device_ref);
     }
