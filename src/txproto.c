@@ -485,6 +485,20 @@ int tx_link(TXMainContext *ctx, AVBufferRef *src, AVBufferRef *dst,
     );
 }
 
+int tx_filtergraph_set_hw_device(TXMainContext *ctx, AVBufferRef *filter_ref,
+                                 AVBufferRef *hw_device_ref)
+{
+    FilterContext *fctx = (FilterContext *)filter_ref->data;
+    if (fctx->hw_device_ref)
+        av_buffer_unref(&fctx->hw_device_ref);
+    if (hw_device_ref) {
+        fctx->hw_device_ref = av_buffer_ref(hw_device_ref);
+        if (!fctx->hw_device_ref)
+            return AVERROR(ENOMEM);
+    }
+    return 0;
+}
+
 int tx_filtergraph_command(TXMainContext *ctx, AVBufferRef *graph,
                            const char *filter_target, AVDictionary *commands)
 {

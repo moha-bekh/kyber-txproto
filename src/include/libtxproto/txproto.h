@@ -107,6 +107,9 @@ int tx_link(TXMainContext *ctx, AVBufferRef *src, AVBufferRef *dst,
 int tx_filtergraph_command(TXMainContext *ctx, AVBufferRef *graph,
                            const char *filter_target, AVDictionary *commands);
 
+int tx_filtergraph_set_hw_device(TXMainContext *ctx, AVBufferRef *filter_ref,
+                                 AVBufferRef *hw_device_ref);
+
 AVBufferRef *tx_packetsink_create(TXMainContext *ctx, const char *uri);
 
 int tx_destroy(TXMainContext *ctx, AVBufferRef **ref);
