@@ -746,10 +746,14 @@ static void pulse_state_cb(pa_context *context, void *data)
     case PA_CONTEXT_FAILED:
         sp_log(ctx, SP_LOG_ERROR, "PulseAudio connection failed: %s!\n",
                pa_strerror(pa_context_errno(context)));
-        pa_context_unref(context);
+        /* The context belongs to ctx and is unreferenced by pulse_uninit():
+         * dropping it here freed it under pulse_init(), which still reads
+         * its state. Wake pulse_init() so that it sees the failure. */
+        pa_threaded_mainloop_signal(ctx->pa_mainloop, 0);
         break;
     case PA_CONTEXT_TERMINATED:
         sp_log(ctx, SP_LOG_VERBOSE, "PulseAudio connection terminated!\n");
+        pa_threaded_mainloop_signal(ctx->pa_mainloop, 0);
         break;
     case PA_CONTEXT_READY:
         sp_log(ctx, SP_LOG_VERBOSE, "PulseAudio connection ready, arming callbacks!\n");
