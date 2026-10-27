@@ -479,6 +479,15 @@ static AVRational get_monitor_rate(XCBCtx *ctx, xcb_window_t root,
     xcb_randr_mode_info_t *modes = xcb_randr_get_screen_resources_modes(resources_r);
     for (int i = 0; i < xcb_randr_get_screen_resources_modes_length(resources_r); i++) {
         if (active_mode == modes[i].id) {
+            /* Virtual X servers (Xvfb, the dummy driver) report modes without
+             * timings: 0/0 would disable the frame rate limit, and capture
+             * would run as fast as it can. Keep the default instead. */
+            if (!modes[i].dot_clock || !modes[i].htotal || !modes[i].vtotal) {
+                sp_log(ctx, SP_LOG_WARN, "Monitor \"%s\" reports no mode timings, "
+                       "assuming %d/%d fps\n", mon_name, rate.num, rate.den);
+                break;
+            }
+
             rate = av_make_q(modes[i].dot_clock, modes[i].htotal * modes[i].vtotal);
 
             sp_log(ctx, SP_LOG_DEBUG, "Found rate %d/%d (%f) for monitor \"%s\"\n",
